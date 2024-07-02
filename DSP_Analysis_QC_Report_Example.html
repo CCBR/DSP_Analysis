@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.353">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>DSP Analysis QC Report</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="DSP_Analysis_QC_Report_files/libs/clipboard/clipboard.min.js"></script>
+<script src="DSP_Analysis_QC_Report_files/libs/quarto-html/quarto.js"></script>
+<script src="DSP_Analysis_QC_Report_files/libs/quarto-html/popper.min.js"></script>
+<script src="DSP_Analysis_QC_Report_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="DSP_Analysis_QC_Report_files/libs/quarto-html/anchor.min.js"></script>
+<link href="DSP_Analysis_QC_Report_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="DSP_Analysis_QC_Report_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="DSP_Analysis_QC_Report_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="DSP_Analysis_QC_Report_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="DSP_Analysis_QC_Report_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">DSP Analysis QC Report</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="load-libraries" class="level2">
+<h2 class="anchored" data-anchor-id="load-libraries">Load Libraries</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load all relevant libraries</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(DSPWorkflow)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(GeomxTools)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(limma)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(edgeR)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggrepel)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(stringr)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(PCAtools)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(readxl)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gridExtra)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(grid)</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(knitr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="initialization" class="level2">
+<h2 class="anchored" data-anchor-id="initialization">Initialization</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Input file parameters</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>pkc.file.name <span class="ot">&lt;-</span> <span class="st">"Hs_R_NGS_WTA_v1.0.pkc"</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>pkc.file.path <span class="ot">&lt;-</span> <span class="fu">paste0</span>(params<span class="sc">$</span>data.folder, pkc.file.name)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>annotation.file.name <span class="ot">&lt;-</span> <span class="st">"annotation_Krug_CPTR_5_april2024_NC_edit.xlsx"</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>annotation.file.path <span class="ot">&lt;-</span> <span class="fu">paste0</span>(params<span class="sc">$</span>data.folder, annotation.file.name)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>dcc.files <span class="ot">&lt;-</span> <span class="fu">list.files</span>(<span class="fu">file.path</span>(<span class="fu">paste0</span>(params<span class="sc">$</span>data.folder, <span class="st">"dcc"</span>)),</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">pattern =</span> <span class="st">".dcc$"</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">full.names =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">recursive =</span> <span class="cn">TRUE</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Annotation parameters</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>annotation.sheet.name <span class="ot">&lt;-</span> <span class="st">"annotation"</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>sample.id.field.name <span class="ot">&lt;-</span> <span class="st">"Sample_ID"</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>panel.field.name <span class="ot">&lt;-</span> <span class="st">"panel"</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>slide.field.name <span class="ot">&lt;-</span> <span class="st">"slide name"</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>class.field.name <span class="ot">&lt;-</span> <span class="st">"class"</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>region.field.name <span class="ot">&lt;-</span> <span class="st">"Region"</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>segment.field.name <span class="ot">&lt;-</span> <span class="st">"segment"</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>area.field.name <span class="ot">&lt;-</span> <span class="st">"area"</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>nuclei.field.name <span class="ot">&lt;-</span> <span class="st">"nuclei"</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>exclude.sankey <span class="ot">&lt;-</span> <span class="cn">FALSE</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>segment.id.length <span class="ot">&lt;-</span> <span class="dv">4</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="co"># Create the GeoMxSet Object</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>sdesign.list <span class="ot">&lt;-</span> <span class="fu">studyDesign</span>(<span class="at">dcc.files =</span> dcc.files, </span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>                                <span class="at">pkc.files =</span> pkc.file.path,</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>                                <span class="at">pheno.data.file =</span> annotation.file.path,</span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>                                <span class="at">pheno.data.sheet =</span> annotation.sheet.name,</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>                                <span class="at">pheno.data.dcc.col.name =</span> sample.id.field.name,</span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>                                <span class="at">protocol.data.col.names =</span> <span class="fu">c</span>(<span class="st">"ROI"</span>),</span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>                                <span class="at">experiment.data.col.names =</span> panel.field.name,</span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>                                <span class="at">slide.name.col =</span> slide.field.name, </span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>                                <span class="at">class.col =</span> class.field.name, </span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>                                <span class="at">region.col =</span> region.field.name, </span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>                                <span class="at">segment.col =</span> segment.field.name,</span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>                                <span class="at">area.col =</span> area.field.name,</span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>                                <span class="at">nuclei.col =</span> nuclei.field.name, </span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>                                <span class="at">sankey.exclude.slide =</span> exclude.sankey, </span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>                                <span class="at">segment.id.length =</span> segment.id.length)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in readNanoStringGeoMxSet(dccFiles = dcc.files, pkcFiles = pkc.files, :
+Annotations missing for the following: DSP-1001660014796-H-A04.dcc,
+DSP-1001660014796-H-A10.dcc, DSP-1001660014796-H-B04.dcc,
+DSP-1001660014796-H-E05.dcc, DSP-1001660014796-H-E11.dcc,
+DSP-1001660014797-G-E02.dcc, DSP-1001660014797-G-E03.dcc, These will be
+excluded from the GeoMxSet object.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in studyDesign(dcc.files = dcc.files, pkc.files = pkc.file.path, : area is not found in the annotation and will not be considered </code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in studyDesign(dcc.files = dcc.files, pkc.files = pkc.file.path, : nuclei is not found in the annotation and will not be considered </code></pre>
+</div>
+</div>
+</section>
+<section id="object-summary" class="level2">
+<h2 class="anchored" data-anchor-id="object-summary">Object Summary</h2>
+<p><a href="#fig-sankey">Figure&nbsp;1</a> shows a summary of AOIs per annotation</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Print the Sankey Plot</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>sdesign.list<span class="sc">$</span>sankey.plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-sankey" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-sankey-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;1: Sankey Plot</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="qc-and-filtering" class="level2">
+<h2 class="anchored" data-anchor-id="qc-and-filtering">QC and Filtering</h2>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>qc.output <span class="ot">&lt;-</span>  <span class="fu">qcProc</span>(<span class="at">object =</span> sdesign.list<span class="sc">$</span>object,</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>                        <span class="at">min.segment.reads =</span> <span class="dv">1000</span>, </span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>                        <span class="at">percent.trimmed =</span> <span class="dv">80</span>,    </span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>                        <span class="at">percent.stitched =</span> <span class="dv">80</span>,   </span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>                        <span class="at">percent.aligned =</span> <span class="dv">80</span>,    </span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>                        <span class="at">percent.saturation =</span> <span class="dv">50</span>, </span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>                        <span class="at">min.negative.count =</span> <span class="dv">3</span>,   </span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>                        <span class="at">max.ntc.count =</span> <span class="dv">1000</span>,     </span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>                        <span class="at">min.nuclei =</span> <span class="dv">200</span>,         </span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>                        <span class="at">min.area =</span> <span class="dv">1000</span>,</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>                        <span class="at">print.plots =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in qcProc(object = sdesign.list$object, min.segment.reads = 1000, : nuclei, area not found in the annotation, min.nuclei, min.area will not be considered</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/QC%20and%20Filtering-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+
+Table: Summary for the NTC values
+
+|NTC Count | # of Segments|
+|:---------|-------------:|
+|0         |           171|
+
+
+Table: QC Summary for each Segment
+
+|              | Pass| Warning|
+|:-------------|----:|-------:|
+|LowReads      |  171|       0|
+|LowTrimmed    |  171|       0|
+|LowStitched   |  171|       0|
+|LowAligned    |  170|       1|
+|LowSaturation |  170|       1|
+|LowNegatives  |  171|       0|
+|HighNTC       |  171|       0|
+|TOTAL FLAGS   |  169|       2|
+
+
+Table: Summary for Segment QC Removal
+
+|         | # Before Removal| # After Removal|
+|:--------|----------------:|---------------:|
+|Features |            18815|           18815|
+|Samples  |              171|             169|
+
+
+Table: Summary for Probe QC Calls (Grubb's Outlier Test)
+
+| Passed| Global| Local|
+|------:|------:|-----:|
+|  18807|      1|     7|
+
+
+Table: Summary for Probe QC Removal
+
+|         | # Before Collapsing| # After Collapsing|
+|:--------|-------------------:|------------------:|
+|Features |               18815|              18814|
+|Samples  |                 169|                169|
+
+
+Table: Summary for Gene-level Counts
+
+|         | # Before Collapsing| # After Collapsing|
+|:--------|-------------------:|------------------:|
+|Features |               18814|              18677|
+|Samples  |                 169|                169|</code></pre>
+</div>
+</div>
+<p>Summary of QC for AOIs and Probes</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>table</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>$NTC_Count
+  NTC_Count # Segments
+1         0        171
+
+$QC_Segment
+      Parameter Pass Warning
+1      LowReads  171       0
+2    LowTrimmed  171       0
+3   LowStitched  171       0
+4    LowAligned  170       1
+5 LowSaturation  170       1
+6  LowNegatives  171       0
+7       HighNTC  171       0
+8   TOTAL FLAGS  169       2
+
+$Segment_QC_Removal
+   element size.before size.after
+1 Features       18815      18815
+2  Samples         171        169
+
+$Probe_QC_Calls
+  Passed Global Local
+1  18807      1     7
+
+$Probe_QC_Removals
+         # Probes Before Collapsing # Probes After Collapsing
+Features                      18815                     18814
+Samples                         169                       169
+
+$Gene_level_Counts
+         # Genes Before Collapsing # Genes After Collapsing
+Features                     18814                    18677
+Samples                        169                      169</code></pre>
+</div>
+</div>
+<section id="aoi-qc" class="level4">
+<h4 class="anchored" data-anchor-id="aoi-qc">AOI QC</h4>
+<p>AOI distribution by parameter and annotation</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Print AOI plots</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>plot<span class="sc">$</span>trimmed</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/AOI%20Plots-1.png" class="img-fluid" width="672"></p>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>plot<span class="sc">$</span>aligned</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/AOI%20Plots-2.png" class="img-fluid" width="672"></p>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>plot<span class="sc">$</span>stitched</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/AOI%20Plots-3.png" class="img-fluid" width="672"></p>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>plot<span class="sc">$</span>saturated</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/AOI%20Plots-4.png" class="img-fluid" width="672"></p>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>plot<span class="sc">$</span>neg.plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/AOI%20Plots-5.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>AOIs that have been flagged with the given QC parameters</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Print AOI flags</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Subset this table so that it is only TRUE columns and segment ID</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Cleaner table to print out with gt?</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>segment.flags</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>                     SampleID            segmentID RawReadCount LowReads
+1 DSP-1001660014796-H-D03.dcc Biop|vess|full|slid|      2537192    FALSE
+2 DSP-1001660014797-G-A09.dcc Biop|tumo|LANA|slid|       401063    FALSE
+  TrimmedPerc LowTrimmed StitchedPerc LowStitched AlignedPerc LowAligned
+1    99.59727      FALSE     98.97820       FALSE    67.80157       TRUE
+2    99.59956      FALSE     98.81964       FALSE    96.53072      FALSE
+  SaturatedPerc LowSaturation NegGeoMean LowNegatives
+1      85.57697         FALSE   7.458466        FALSE
+2      45.46027          TRUE   5.003674        FALSE</code></pre>
+</div>
+</div>
+</section>
+<section id="probe-qc" class="level3">
+<h3 class="anchored" data-anchor-id="probe-qc">Probe QC</h3>
+<p>Probes that have been flagged as either local or global outliers.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Print probe flags</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Change this table so that it prints segmentID instead of sampleID</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Cleaner table to print out with gt?</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>qc.output<span class="sc">$</span>probe.flags</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>    TargetName     RTS_ID FlagType
+1 NegProbe-WTX RTS0039321    Local
+2 NegProbe-WTX RTS0039332    Local
+3 NegProbe-WTX RTS0039334    Local
+4 NegProbe-WTX RTS0039339    Local
+5 NegProbe-WTX RTS0039346   Global
+6 NegProbe-WTX RTS0039349    Local
+7 NegProbe-WTX RTS0039367    Local
+8 NegProbe-WTX RTS0051994    Local
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    LocalFlag
+1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 DSP-1001660014797-G-C08.dcc
+2 DSP-1001660014796-H-A02.dcc,DSP-1001660014796-H-A08.dcc,DSP-1001660014796-H-A11.dcc,DSP-1001660014796-H-B12.dcc,DSP-1001660014796-H-D07.dcc,DSP-1001660014796-H-G03.dcc,DSP-1001660014796-H-G06.dcc,DSP-1001660014796-H-G08.dcc,DSP-1001660014797-G-A03.dcc,DSP-1001660014797-G-A08.dcc,DSP-1001660014797-G-B05.dcc,DSP-1001660014797-G-B12.dcc,DSP-1001660014797-G-E01.dcc,DSP-1001660014797-G-E05.dcc,DSP-1001660014797-G-E08.dcc,DSP-1001660014797-G-F01.dcc,DSP-1001660014797-G-F07.dcc,DSP-1001660014797-G-F11.dcc,DSP-1001660014797-G-F12.dcc,DSP-1001660014797-G-G01.dcc,DSP-1001660014797-G-G07.dcc,DSP-1001660014797-G-G12.dcc,DSP-1001660014797-G-H01.dcc,DSP-1001660014797-G-H02.dcc,DSP-1001660014797-G-H03.dcc,DSP-1001660014797-G-H04.dcc,DSP-1001660014797-G-H05.dcc,DSP-1001660014797-G-H08.dcc,DSP-1001660014797-G-H10.dcc
+3                                                                                                                                                                                                                                                                                                                                                                                                         DSP-1001660014797-G-A04.dcc,DSP-1001660014797-G-A05.dcc,DSP-1001660014797-G-B10.dcc,DSP-1001660014797-G-C04.dcc,DSP-1001660014797-G-C09.dcc,DSP-1001660014797-G-C11.dcc,DSP-1001660014797-G-D04.dcc,DSP-1001660014797-G-D12.dcc,DSP-1001660014797-G-E06.dcc,DSP-1001660014797-G-E07.dcc,DSP-1001660014797-G-E09.dcc,DSP-1001660014797-G-E10.dcc,DSP-1001660014797-G-E11.dcc,DSP-1001660014797-G-E12.dcc,DSP-1001660014797-G-H09.dcc
+4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 DSP-1001660014796-H-B09.dcc
+5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        &lt;NA&gt;
+6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 DSP-1001660014797-G-B02.dcc
+7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 DSP-1001660014797-G-G08.dcc
+8                                                                                     DSP-1001660014796-H-A05.dcc,DSP-1001660014796-H-A06.dcc,DSP-1001660014796-H-B02.dcc,DSP-1001660014796-H-C03.dcc,DSP-1001660014796-H-C05.dcc,DSP-1001660014796-H-C06.dcc,DSP-1001660014796-H-C07.dcc,DSP-1001660014796-H-C10.dcc,DSP-1001660014796-H-C12.dcc,DSP-1001660014796-H-E01.dcc,DSP-1001660014796-H-E06.dcc,DSP-1001660014796-H-E08.dcc,DSP-1001660014796-H-F01.dcc,DSP-1001660014796-H-F04.dcc,DSP-1001660014796-H-F06.dcc,DSP-1001660014796-H-F11.dcc,DSP-1001660014796-H-F12.dcc,DSP-1001660014796-H-G05.dcc,DSP-1001660014796-H-G11.dcc,DSP-1001660014797-G-B11.dcc,DSP-1001660014797-G-C03.dcc,DSP-1001660014797-G-G02.dcc,DSP-1001660014797-G-G06.dcc,DSP-1001660014797-G-G09.dcc,DSP-1001660014797-G-G11.dcc,DSP-1001660014797-G-H07.dcc</code></pre>
+</div>
+</div>
+</section>
+<section id="filtering" class="level3">
+<h3 class="anchored" data-anchor-id="filtering">Filtering</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>object <span class="ot">&lt;-</span> qc.output<span class="sc">$</span>object</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Set up lists of segment IDs</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>segment.list.total <span class="ot">&lt;-</span> <span class="fu">pData</span>(object)<span class="sc">$</span>segmentID</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Define Modules</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>modules <span class="ot">&lt;-</span> <span class="fu">gsub</span>(<span class="st">".pkc"</span>, <span class="st">""</span>, pkc.file.name)</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate limit of quantification (LOQ) in each segment</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a><span class="co"># LOQ = geomean(NegProbes) * geoSD(NegProbes)^(LOQ cutoff)</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="co"># LOQ is calculated for each module (pkc file)</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>loq <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">row.names =</span> <span class="fu">colnames</span>(object))</span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>loq.min <span class="ot">&lt;-</span> <span class="dv">2</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>loq.cutoff <span class="ot">&lt;-</span> <span class="dv">2</span></span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span>(module <span class="cf">in</span> modules) {</span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>  vars <span class="ot">&lt;-</span> <span class="fu">paste0</span>(<span class="fu">c</span>(<span class="st">"NegGeoMean_"</span>, <span class="st">"NegGeoSD_"</span>),</span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>                 module)</span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span>(<span class="fu">all</span>(vars[<span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>] <span class="sc">%in%</span> <span class="fu">colnames</span>(<span class="fu">pData</span>(object)))) {</span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>    neg.geo.mean <span class="ot">&lt;-</span> vars[<span class="dv">1</span>]</span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>    neg.geo.sd <span class="ot">&lt;-</span> vars[<span class="dv">2</span>]</span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a>    loq[, module] <span class="ot">&lt;-</span></span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a>      <span class="fu">pmax</span>(loq.min,</span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a>           <span class="fu">pData</span>(object)[, neg.geo.mean] <span class="sc">*</span> </span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>             <span class="fu">pData</span>(object)[, neg.geo.sd] <span class="sc">^</span> loq.cutoff)</span>
+<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-31"><a href="#cb21-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-32"><a href="#cb21-32" aria-hidden="true" tabindex="-1"></a><span class="co"># Store the loq df in the annotation df</span></span>
+<span id="cb21-33"><a href="#cb21-33" aria-hidden="true" tabindex="-1"></a><span class="fu">pData</span>(object)<span class="sc">$</span>loq <span class="ot">&lt;-</span> loq</span>
+<span id="cb21-34"><a href="#cb21-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-35"><a href="#cb21-35" aria-hidden="true" tabindex="-1"></a><span class="co"># Setup a master loq matrix</span></span>
+<span id="cb21-36"><a href="#cb21-36" aria-hidden="true" tabindex="-1"></a>loq.mat <span class="ot">&lt;-</span> <span class="fu">c</span>()</span>
+<span id="cb21-37"><a href="#cb21-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-38"><a href="#cb21-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-39"><a href="#cb21-39" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span>(module <span class="cf">in</span> modules) {</span>
+<span id="cb21-40"><a href="#cb21-40" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Gather rows with the given module</span></span>
+<span id="cb21-41"><a href="#cb21-41" aria-hidden="true" tabindex="-1"></a>  ind <span class="ot">&lt;-</span> <span class="fu">fData</span>(object)<span class="sc">$</span>Module <span class="sc">==</span> module</span>
+<span id="cb21-42"><a href="#cb21-42" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb21-43"><a href="#cb21-43" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Check if each feature has counts above the LOQ</span></span>
+<span id="cb21-44"><a href="#cb21-44" aria-hidden="true" tabindex="-1"></a>  mat.i <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">esApply</span>(object[ind, ], <span class="at">MARGIN =</span> <span class="dv">1</span>,</span>
+<span id="cb21-45"><a href="#cb21-45" aria-hidden="true" tabindex="-1"></a>                     <span class="at">FUN =</span> <span class="cf">function</span>(x) {</span>
+<span id="cb21-46"><a href="#cb21-46" aria-hidden="true" tabindex="-1"></a>                       x <span class="sc">&gt;</span> loq[, module]</span>
+<span id="cb21-47"><a href="#cb21-47" aria-hidden="true" tabindex="-1"></a>                     }))</span>
+<span id="cb21-48"><a href="#cb21-48" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb21-49"><a href="#cb21-49" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Store results in the master loq matrix</span></span>
+<span id="cb21-50"><a href="#cb21-50" aria-hidden="true" tabindex="-1"></a>  loq.mat <span class="ot">&lt;-</span> <span class="fu">rbind</span>(loq.mat, mat.i)</span>
+<span id="cb21-51"><a href="#cb21-51" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-52"><a href="#cb21-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-53"><a href="#cb21-53" aria-hidden="true" tabindex="-1"></a><span class="co"># ensure ordering since this is stored outside of the geomxSet</span></span>
+<span id="cb21-54"><a href="#cb21-54" aria-hidden="true" tabindex="-1"></a>loq.mat <span class="ot">&lt;-</span> loq.mat[<span class="fu">fData</span>(object)<span class="sc">$</span>TargetName, ]</span>
+<span id="cb21-55"><a href="#cb21-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-56"><a href="#cb21-56" aria-hidden="true" tabindex="-1"></a><span class="co"># Evaluate and Filter Segment Gene Detection Rate</span></span>
+<span id="cb21-57"><a href="#cb21-57" aria-hidden="true" tabindex="-1"></a><span class="co"># Save detection rate information to pheno data</span></span>
+<span id="cb21-58"><a href="#cb21-58" aria-hidden="true" tabindex="-1"></a><span class="fu">pData</span>(object)<span class="sc">$</span>GenesDetected <span class="ot">&lt;-</span> <span class="fu">colSums</span>(loq.mat, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb21-59"><a href="#cb21-59" aria-hidden="true" tabindex="-1"></a><span class="fu">pData</span>(object)<span class="sc">$</span>GeneDetectionRate <span class="ot">&lt;-</span> <span class="dv">100</span><span class="sc">*</span>(<span class="fu">pData</span>(object)<span class="sc">$</span>GenesDetected <span class="sc">/</span> <span class="fu">nrow</span>(object))</span>
+<span id="cb21-60"><a href="#cb21-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-61"><a href="#cb21-61" aria-hidden="true" tabindex="-1"></a><span class="co"># Establish detection bins</span></span>
+<span id="cb21-62"><a href="#cb21-62" aria-hidden="true" tabindex="-1"></a>detection.bins <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"less_than_1"</span>, <span class="st">"1_5"</span>, <span class="st">"5_10"</span>, <span class="st">"10_15"</span>, <span class="st">"greater_than_15"</span>)</span>
+<span id="cb21-63"><a href="#cb21-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-64"><a href="#cb21-64" aria-hidden="true" tabindex="-1"></a><span class="co"># Determine detection thresholds: 1%, 5%, 10%, 15%, &gt;15%</span></span>
+<span id="cb21-65"><a href="#cb21-65" aria-hidden="true" tabindex="-1"></a><span class="fu">pData</span>(object)<span class="sc">$</span>DetectionThreshold <span class="ot">&lt;-</span> </span>
+<span id="cb21-66"><a href="#cb21-66" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cut</span>(<span class="fu">pData</span>(object)<span class="sc">$</span>GeneDetectionRate,</span>
+<span id="cb21-67"><a href="#cb21-67" aria-hidden="true" tabindex="-1"></a>      <span class="at">breaks =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">10</span>, <span class="dv">15</span>, <span class="dv">100</span>),</span>
+<span id="cb21-68"><a href="#cb21-68" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> detection.bins)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<section id="overall-gene-detection-per-aoi" class="level4">
+<h4 class="anchored" data-anchor-id="overall-gene-detection-per-aoi">Overall Gene Detection per AOI</h4>
+<p><a href="#fig-GeneDetectionbByAOI">Figure&nbsp;2</a> shows detection rate per AOI, colored by region.</p>
+<div class="cell" data-tbl-cap="Overall Gene Detection per AOI">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># stacked bar plot of different cut points (1%, 5%, 10%, 15%)</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>segment.stacked.bar.plot <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(<span class="fu">pData</span>(object),</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>                          <span class="fu">aes</span>(<span class="at">x =</span> DetectionThreshold)) <span class="sc">+</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_bar</span>(<span class="fu">aes</span>(<span class="at">fill =</span> region)) <span class="sc">+</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_text</span>(<span class="at">stat =</span> <span class="st">"count"</span>, <span class="fu">aes</span>(<span class="at">label =</span> ..count..), <span class="at">vjust =</span> <span class="sc">-</span><span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>(<span class="at">expand =</span> <span class="fu">expansion</span>(<span class="at">mult =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.1</span>))) <span class="sc">+</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Gene Detection Rate"</span>,</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>         <span class="at">y =</span> <span class="st">"Segments, #"</span>,</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>         <span class="at">fill =</span> <span class="st">"AOI Annotation"</span>)</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(segment.stacked.bar.plot)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-GeneDetectionbByAOI" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-GeneDetectionbByAOI-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;2: <strong>?(caption)</strong></figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p>AOIs in the low detection bin of 1-5%</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># cut percent genes detected at 1, 5, 10, 15</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>segment.table <span class="ot">&lt;-</span> <span class="fu">kable</span>(<span class="fu">table</span>(<span class="fu">pData</span>(object)<span class="sc">$</span>DetectionThreshold, </span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>                             <span class="fu">pData</span>(object)<span class="sc">$</span>class))</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Make a list of segments with low detection</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>low.detection.segments <span class="ot">&lt;-</span> <span class="fu">pData</span>(object) <span class="sc">%&gt;%</span> </span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(GeneDetectionRate <span class="sc">&lt;</span> <span class="dv">5</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">any_of</span>(<span class="fu">c</span>(<span class="st">"segmentID"</span>, <span class="st">"GeneDetectionRate"</span>)))</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(low.detection.segments) <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(low.detection.segments)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>             segmentID GeneDetectionRate
+1 Biop|tumo|LANA|slid|          4.759865
+2 Biop|tumo|LANA|slid|          4.749157
+3 Biop|vess|full|slid|          4.020988
+4 Biop|vess|full|slid|          4.797344
+5 Biop|vess|full|slid|          4.658136</code></pre>
+</div>
+</div>
+<p>Gene detection for all AOIs</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Export a summary of the segment gene detection</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>segment.detection.summary <span class="ot">&lt;-</span> <span class="fu">pData</span>(object) <span class="sc">%&gt;%</span> </span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">any_of</span>(<span class="fu">c</span>(<span class="st">"segmentID"</span>, <span class="st">"GeneDetectionRate"</span>, <span class="st">"DetectionThreshold"</span>)))</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(segment.detection.summary)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>                                       segmentID GeneDetectionRate
+DSP-1001660014796-H-A02.dcc Biop|immu|full|slid|          28.25400
+DSP-1001660014796-H-A03.dcc Biop|immu|full|slid|          22.77668
+DSP-1001660014796-H-A05.dcc Biop|tumo|LANA|slid|          24.96118
+DSP-1001660014796-H-A06.dcc Biop|immu|full|slid|          21.86111
+DSP-1001660014796-H-A07.dcc Biop|tumo|LANA|slid|          25.83391
+DSP-1001660014796-H-A08.dcc Biop|immu|full|slid|          21.41672
+                            DetectionThreshold
+DSP-1001660014796-H-A02.dcc    greater_than_15
+DSP-1001660014796-H-A03.dcc    greater_than_15
+DSP-1001660014796-H-A05.dcc    greater_than_15
+DSP-1001660014796-H-A06.dcc    greater_than_15
+DSP-1001660014796-H-A07.dcc    greater_than_15
+DSP-1001660014796-H-A08.dcc    greater_than_15</code></pre>
+</div>
+</div>
+<section id="filter-out-aois-with-low-detection" class="level5">
+<h5 class="anchored" data-anchor-id="filter-out-aois-with-low-detection">Filter out AOIs with low detection</h5>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Filter the data using the cutoff for gene detection rate</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>segment.gene.rate.cutoff <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>object.segment.filtered <span class="ot">&lt;-</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    object[, <span class="fu">pData</span>(object)<span class="sc">$</span>GeneDetectionRate <span class="sc">&gt;=</span> segment.gene.rate.cutoff]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+</section>
+<section id="detection-per-gene" class="level4">
+<h4 class="anchored" data-anchor-id="detection-per-gene">Detection per Gene</h4>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Evaluate and Filter Study-wide Gene Detection Rate </span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Calculate detection rate:</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>loq.mat <span class="ot">&lt;-</span> loq.mat[, <span class="fu">colnames</span>(object.segment.filtered)]</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a><span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectedSegments <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(loq.mat, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a><span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectionRate <span class="ot">&lt;-</span></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>  <span class="dv">100</span><span class="sc">*</span>(<span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectedSegments <span class="sc">/</span> <span class="fu">nrow</span>(<span class="fu">pData</span>(object)))</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Establish detection bins</span></span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>detection.bins <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"0"</span>, <span class="st">"less_than_1"</span>, <span class="st">"1_5"</span>, <span class="st">"5_10"</span>, <span class="st">"10_20"</span>, <span class="st">"20_30"</span>, <span class="st">"30_40"</span>, <span class="st">"40_50"</span>, <span class="st">"greater_than_50"</span>)</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Determine detection thresholds: 1%, 5%, 10%, 15%, &gt;15%</span></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a><span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectionThreshold <span class="ot">&lt;-</span> </span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cut</span>(<span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectionRate,</span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>      <span class="at">breaks =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">10</span>, <span class="dv">20</span>, <span class="dv">30</span>, <span class="dv">40</span>, <span class="dv">50</span>, <span class="dv">100</span>),</span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">labels =</span> detection.bins)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p><a href="#fig-DetectionPerGene">Figure&nbsp;3</a> shows the percent of all AOIs individual genes are detected within</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>gene.stacked.bar.plot <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(<span class="fu">fData</span>(object.segment.filtered),</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>                          <span class="fu">aes</span>(<span class="at">x =</span> DetectionThreshold)) <span class="sc">+</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_bar</span>(<span class="fu">aes</span>(<span class="at">fill =</span> Module)) <span class="sc">+</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_text</span>(<span class="at">stat =</span> <span class="st">"count"</span>, <span class="fu">aes</span>(<span class="at">label =</span> ..count..), <span class="at">vjust =</span> <span class="sc">-</span><span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>(<span class="at">expand =</span> <span class="fu">expansion</span>(<span class="at">mult =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.1</span>))) <span class="sc">+</span></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Gene Detection Rate"</span>,</span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>         <span class="at">y =</span> <span class="st">"Genes, #"</span>,</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>         <span class="at">fill =</span> <span class="st">"Probe Set"</span>)</span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(gene.stacked.bar.plot)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-DetectionPerGene" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-DetectionPerGene-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;3: Gene Detection Percent of All AOIs</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p>Gene detection rates for specified genes of interest</p>
+<div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Gene of interest detection table</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>goi <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"A2M"</span>, <span class="st">"CD44"</span>)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>goi.table <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">Gene =</span> goi,</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>                        <span class="at">Number =</span> <span class="fu">fData</span>(object.segment.filtered)[goi, <span class="st">"DetectedSegments"</span>],</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>                        <span class="at">DetectionRate =</span> <span class="fu">fData</span>(object.segment.filtered)[goi, <span class="st">"DetectionRate"</span>])</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(goi.table)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div id="tbl-GenesOfInterest" class="cell tbl-parent quarto-layout-panel anchored" data-tbl-cap="Gene of Interest Detection Rate">
+<div class="panel-caption table-caption">
+<p><strong>?(caption)</strong></p>
+</div>
+<div class="quarto-layout-row quarto-layout-valign-top">
+<div class="cell-output cell-output-stdout quarto-layout-cell" style="flex-basis: 100.0%;justify-content: center;">
+<pre><code>  Gene Number DetectionRate
+1  A2M    169     100.00000
+2 CD44    160      94.67456</code></pre>
+</div>
+</div>
+</div>
+</div>
+<p><a href="#fig-DetectionPerGeneLoss">Figure&nbsp;4</a> shows the loss of percentage of all AOIs individual genes are detected within</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot detection rate:</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>plot.detect <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">Freq =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">10</span>, <span class="dv">20</span>, <span class="dv">30</span>, <span class="dv">50</span>))</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>plot.detect<span class="sc">$</span>Number <span class="ot">&lt;-</span></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">unlist</span>(<span class="fu">lapply</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">10</span>, <span class="dv">20</span>, <span class="dv">30</span>, <span class="dv">50</span>),</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>                <span class="cf">function</span>(x) {<span class="fu">sum</span>(<span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectionRate <span class="sc">&gt;=</span> x)}))</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>plot.detect<span class="sc">$</span>Rate <span class="ot">&lt;-</span> plot.detect<span class="sc">$</span>Number <span class="sc">/</span> <span class="fu">nrow</span>(<span class="fu">fData</span>(object.segment.filtered))</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(plot.detect) <span class="ot">&lt;-</span> plot.detect<span class="sc">$</span>Freq</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>genes.detected.plot <span class="ot">&lt;-</span> <span class="fu">ggplot</span>(plot.detect, <span class="fu">aes</span>(<span class="at">x =</span> <span class="fu">as.factor</span>(Freq), <span class="at">y =</span> Rate, <span class="at">fill =</span> Rate)) <span class="sc">+</span></span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_bar</span>(<span class="at">stat =</span> <span class="st">"identity"</span>) <span class="sc">+</span></span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_text</span>(<span class="fu">aes</span>(<span class="at">label =</span> <span class="fu">formatC</span>(Number, <span class="at">format =</span> <span class="st">"d"</span>, <span class="at">big.mark =</span> <span class="st">","</span>)),</span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a>            <span class="at">vjust =</span> <span class="fl">1.6</span>, <span class="at">color =</span> <span class="st">"black"</span>, <span class="at">size =</span> <span class="dv">4</span>) <span class="sc">+</span></span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_gradient2</span>(<span class="at">low =</span> <span class="st">"orange2"</span>, <span class="at">mid =</span> <span class="st">"lightblue"</span>,</span>
+<span id="cb32-15"><a href="#cb32-15" aria-hidden="true" tabindex="-1"></a>                       <span class="at">high =</span> <span class="st">"dodgerblue3"</span>, <span class="at">midpoint =</span> <span class="fl">0.65</span>,</span>
+<span id="cb32-16"><a href="#cb32-16" aria-hidden="true" tabindex="-1"></a>                       <span class="at">limits =</span> <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">1</span>),</span>
+<span id="cb32-17"><a href="#cb32-17" aria-hidden="true" tabindex="-1"></a>                       <span class="at">labels =</span> scales<span class="sc">::</span>percent) <span class="sc">+</span></span>
+<span id="cb32-18"><a href="#cb32-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb32-19"><a href="#cb32-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>(<span class="at">labels =</span> scales<span class="sc">::</span>percent, <span class="at">limits =</span> <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">1</span>),</span>
+<span id="cb32-20"><a href="#cb32-20" aria-hidden="true" tabindex="-1"></a>                     <span class="at">expand =</span> <span class="fu">expansion</span>(<span class="at">mult =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">0</span>))) <span class="sc">+</span></span>
+<span id="cb32-21"><a href="#cb32-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"% of Segments"</span>,</span>
+<span id="cb32-22"><a href="#cb32-22" aria-hidden="true" tabindex="-1"></a>       <span class="at">y =</span> <span class="st">"Genes Detected, % of Panel &gt; loq"</span>)</span>
+<span id="cb32-23"><a href="#cb32-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-24"><a href="#cb32-24" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(genes.detected.plot)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-DetectionPerGeneLoss" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-DetectionPerGeneLoss-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;4: Gene Detection Percent of All AOIs</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p>Summary of all gene detection rates</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Gather a summary of the every gene's detection percentage in all AOIs</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>gene.detection.summary <span class="ot">&lt;-</span> <span class="fu">fData</span>(object.segment.filtered) <span class="sc">%&gt;%</span> </span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">any_of</span>(<span class="fu">c</span>(<span class="st">"segmentID"</span>, <span class="st">"DetectionRate"</span>, <span class="st">"DetectionThreshold"</span>)))</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(gene.detection.summary)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>       DetectionRate DetectionThreshold
+A2M        100.00000    greater_than_50
+NAT2         0.00000                  0
+ACADM       10.05917              10_20
+ACADS        2.95858                1_5
+ACAT1       27.21893              20_30
+ACVRL1      60.94675    greater_than_50</code></pre>
+</div>
+</div>
+<section id="filter-out-genes-with-low-detection" class="level5">
+<h5 class="anchored" data-anchor-id="filter-out-genes-with-low-detection">Filter out genes with low detection</h5>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set the cutoff for gene detection</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>study.gene.rate.cutoff <span class="ot">&lt;-</span> <span class="fl">0.00</span></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Subset for genes above the study gene detection rate cutoff</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Manually include the negative control probe, for downstream use</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>negative.probe.fData <span class="ot">&lt;-</span> <span class="fu">subset</span>(<span class="fu">fData</span>(object.segment.filtered), CodeClass <span class="sc">==</span> <span class="st">"Negative"</span>)</span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>neg.probes <span class="ot">&lt;-</span> <span class="fu">unique</span>(negative.probe.fData<span class="sc">$</span>TargetName)</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>object.gene.filtered <span class="ot">&lt;-</span> object.segment.filtered[<span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>DetectionRate <span class="sc">&gt;=</span> study.gene.rate.cutoff <span class="sc">|</span></span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>                   <span class="fu">fData</span>(object.segment.filtered)<span class="sc">$</span>TargetName <span class="sc">%in%</span> neg.probes, ]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+</section>
+</section>
+<section id="normalization" class="level3">
+<h3 class="anchored" data-anchor-id="normalization">Normalization</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>q3.normalization.output <span class="ot">&lt;-</span> <span class="fu">geomxNorm</span>(</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>                                  <span class="at">object =</span> object.gene.filtered, </span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>                                  <span class="at">norm =</span> <span class="st">"q3"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Using Segment, Annotation as id variables</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>No id variables; using all as measure variables
+No id variables; using all as measure variables</code></pre>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>neg.normalization.output <span class="ot">&lt;-</span> <span class="fu">geomxNorm</span>(</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>                                  <span class="at">object =</span> object.gene.filtered, </span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>                                  <span class="at">norm =</span> <span class="st">"neg"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Using Segment, Annotation as id variables
+No id variables; using all as measure variables
+No id variables; using all as measure variables</code></pre>
+</div>
+</div>
+<section id="normalized-reads-vs.-negative-background" class="level4">
+<h4 class="anchored" data-anchor-id="normalized-reads-vs.-negative-background">Normalized Reads vs.&nbsp;Negative Background</h4>
+<p><a href="#fig-Q3vsBackground">Figure&nbsp;5</a> shows the quartile-3 (Q3) normalization counts compared to negative probes</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>q3.normalization.output<span class="sc">$</span>multi.plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-Q3vsBackground" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-Q3vsBackground-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;5: Q3 Normalized Counts versus Background</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><a href="#fig-NegvsBackground">Figure&nbsp;6</a> shows the negative normalization counts compared to negative probes</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>neg.normalization.output<span class="sc">$</span>multi.plot</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-NegvsBackground" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-NegvsBackground-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;6: Negative Normalized Counts versus Background</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><strong>Example AOIs</strong></p>
+<p><a href="#fig-RawReadBoxPlots">Figure&nbsp;7</a> shows the raw read count boxplots for an example 10 AOIs</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>q3.normalization.output<span class="sc">$</span>boxplot.raw</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-RawReadBoxPlots" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-RawReadBoxPlots-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;7: Raw Counts for an Example 10 AOIs</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><a href="#fig-Q3NormBoxPlots">Figure&nbsp;8</a> shows the Q3 normalized read count boxplots for an example 10 AOIs</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>q3.normalization.output<span class="sc">$</span>boxplot.norm</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-Q3NormBoxPlots" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-Q3NormBoxPlots-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;8: Q3 Normalized Counts for an Example 10 AOIs</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><a href="#fig-NegNormBoxPlots">Figure&nbsp;9</a> shows the negative normalized read count boxplots for an example 10 AOIs</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>neg.normalization.output<span class="sc">$</span>boxplot.norm</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-NegNormBoxPlots" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-NegNormBoxPlots-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;9: Negative Normalized Counts for an Example 10 AOIs</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="principal-component-analysis-pca" class="level4">
+<h4 class="anchored" data-anchor-id="principal-component-analysis-pca">Principal Component Analysis (PCA)</h4>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="co"># See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction</span></span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the Geomx object</span></span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>object <span class="ot">&lt;-</span> q3.normalization.output<span class="sc">$</span>object</span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Gather the the normalized counts</span></span>
+<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a>norm.counts.df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(object<span class="sc">@</span>assayData<span class="sc">$</span>q_norm)</span>
+<span id="cb46-8"><a href="#cb46-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-9"><a href="#cb46-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Convert counts to log2</span></span>
+<span id="cb46-10"><a href="#cb46-10" aria-hidden="true" tabindex="-1"></a>log.counts.df <span class="ot">&lt;-</span> norm.counts.df <span class="sc">%&gt;%</span> </span>
+<span id="cb46-11"><a href="#cb46-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate_all</span>(<span class="sc">~</span> <span class="fu">log2</span>(.)) <span class="sc">%&gt;%</span> </span>
+<span id="cb46-12"><a href="#cb46-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename_all</span>(<span class="sc">~</span> <span class="fu">gsub</span>(<span class="st">"</span><span class="sc">\\</span><span class="st">.dcc"</span>, <span class="st">""</span>, .))</span>
+<span id="cb46-13"><a href="#cb46-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-14"><a href="#cb46-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove the negative controls from the log counts</span></span>
+<span id="cb46-15"><a href="#cb46-15" aria-hidden="true" tabindex="-1"></a>control.probes <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"NegProbe-WTX"</span>)</span>
+<span id="cb46-16"><a href="#cb46-16" aria-hidden="true" tabindex="-1"></a>log.counts.df <span class="ot">&lt;-</span> log.counts.df[<span class="sc">!</span>(<span class="fu">rownames</span>(log.counts.df) <span class="sc">%in%</span> control.probes), ]</span>
+<span id="cb46-17"><a href="#cb46-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-18"><a href="#cb46-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the annotation</span></span>
+<span id="cb46-19"><a href="#cb46-19" aria-hidden="true" tabindex="-1"></a>annotation <span class="ot">&lt;-</span> <span class="fu">pData</span>(object)</span>
+<span id="cb46-20"><a href="#cb46-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-21"><a href="#cb46-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove NTCs</span></span>
+<span id="cb46-22"><a href="#cb46-22" aria-hidden="true" tabindex="-1"></a>cleaned.annotation.df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(annotation[annotation<span class="sc">$</span><span class="st">'slide_name'</span> <span class="sc">!=</span> <span class="st">"No Template Control"</span>, ])</span>
+<span id="cb46-23"><a href="#cb46-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-24"><a href="#cb46-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Order of rownames of annotation need to match columns of count data</span></span>
+<span id="cb46-25"><a href="#cb46-25" aria-hidden="true" tabindex="-1"></a>cleaned.annotation.df <span class="ot">&lt;-</span> cleaned.annotation.df[<span class="fu">order</span>(<span class="fu">rownames</span>(cleaned.annotation.df)), ]</span>
+<span id="cb46-26"><a href="#cb46-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-27"><a href="#cb46-27" aria-hidden="true" tabindex="-1"></a>log.counts.df <span class="ot">&lt;-</span> log.counts.df[<span class="fu">order</span>(<span class="fu">colnames</span>(log.counts.df))]</span>
+<span id="cb46-28"><a href="#cb46-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-29"><a href="#cb46-29" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove .dcc from Sample ID row names</span></span>
+<span id="cb46-30"><a href="#cb46-30" aria-hidden="true" tabindex="-1"></a>cleaned.annotation.df <span class="ot">&lt;-</span> cleaned.annotation.df <span class="sc">%&gt;%</span> <span class="st">`</span><span class="at">rownames&lt;-</span><span class="st">`</span>(<span class="fu">sub</span>(<span class="st">"</span><span class="sc">\\</span><span class="st">.dcc"</span>, <span class="st">""</span>, <span class="fu">rownames</span>(.)))</span>
+<span id="cb46-31"><a href="#cb46-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-32"><a href="#cb46-32" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate a PCA table for all samples</span></span>
+<span id="cb46-33"><a href="#cb46-33" aria-hidden="true" tabindex="-1"></a>pca.table <span class="ot">&lt;-</span> <span class="fu">pca</span>(log.counts.df, </span>
+<span id="cb46-34"><a href="#cb46-34" aria-hidden="true" tabindex="-1"></a>                 <span class="at">metadata =</span> cleaned.annotation.df, </span>
+<span id="cb46-35"><a href="#cb46-35" aria-hidden="true" tabindex="-1"></a>                 <span class="at">removeVar =</span> <span class="fl">0.1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>-- removing the lower 10% of variables based on variance</code></pre>
+</div>
+</div>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>pca.plot.segment <span class="ot">&lt;-</span> <span class="fu">biplot</span>(pca.table, </span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>                         <span class="at">colby =</span> <span class="st">"segment"</span>, </span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendPosition =</span> <span class="st">"right"</span>, </span>
+<span id="cb48-4"><a href="#cb48-4" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendLabSize =</span> <span class="dv">10</span>, </span>
+<span id="cb48-5"><a href="#cb48-5" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendIconSize =</span> <span class="dv">5</span>, </span>
+<span id="cb48-6"><a href="#cb48-6" aria-hidden="true" tabindex="-1"></a>                         <span class="at">lab =</span> <span class="cn">NULL</span>,</span>
+<span id="cb48-7"><a href="#cb48-7" aria-hidden="true" tabindex="-1"></a>                         <span class="at">title =</span> <span class="st">"All samples"</span>, </span>
+<span id="cb48-8"><a href="#cb48-8" aria-hidden="true" tabindex="-1"></a>                         <span class="at">subtitle =</span> <span class="st">"NTCs removed"</span>)</span>
+<span id="cb48-9"><a href="#cb48-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb48-10"><a href="#cb48-10" aria-hidden="true" tabindex="-1"></a>pca.plot.segment</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-PCAsegment" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-PCAsegment-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;10: PCA colored by Segment</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>pca.plot.region <span class="ot">&lt;-</span> <span class="fu">biplot</span>(pca.table, </span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>                         <span class="at">colby =</span> <span class="st">"region"</span>, </span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendPosition =</span> <span class="st">"right"</span>, </span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendLabSize =</span> <span class="dv">10</span>, </span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendIconSize =</span> <span class="dv">5</span>, </span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>                         <span class="at">lab =</span> <span class="cn">NULL</span>,</span>
+<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a>                         <span class="at">title =</span> <span class="st">"All samples"</span>, </span>
+<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a>                         <span class="at">subtitle =</span> <span class="st">"NTCs removed"</span>)</span>
+<span id="cb49-9"><a href="#cb49-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-10"><a href="#cb49-10" aria-hidden="true" tabindex="-1"></a>pca.plot.region</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-PCAregion" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-PCAregion-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;11: PCA colored by Region</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>pca.plot.class <span class="ot">&lt;-</span> <span class="fu">biplot</span>(pca.table, </span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>                         <span class="at">colby =</span> <span class="st">"class"</span>, </span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendPosition =</span> <span class="st">"right"</span>, </span>
+<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendLabSize =</span> <span class="dv">10</span>, </span>
+<span id="cb50-5"><a href="#cb50-5" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendIconSize =</span> <span class="dv">5</span>, </span>
+<span id="cb50-6"><a href="#cb50-6" aria-hidden="true" tabindex="-1"></a>                         <span class="at">lab =</span> <span class="cn">NULL</span>,</span>
+<span id="cb50-7"><a href="#cb50-7" aria-hidden="true" tabindex="-1"></a>                         <span class="at">title =</span> <span class="st">"All samples"</span>, </span>
+<span id="cb50-8"><a href="#cb50-8" aria-hidden="true" tabindex="-1"></a>                         <span class="at">subtitle =</span> <span class="st">"NTCs removed"</span>)</span>
+<span id="cb50-9"><a href="#cb50-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-10"><a href="#cb50-10" aria-hidden="true" tabindex="-1"></a>pca.plot.class</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-PCAclass" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-PCAclass-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;12: PCA colored by Class</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>pca.plot.slide <span class="ot">&lt;-</span> <span class="fu">biplot</span>(pca.table, </span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>                         <span class="at">colby =</span> <span class="st">"slide_name"</span>, </span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendPosition =</span> <span class="st">"right"</span>, </span>
+<span id="cb51-4"><a href="#cb51-4" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendLabSize =</span> <span class="dv">10</span>, </span>
+<span id="cb51-5"><a href="#cb51-5" aria-hidden="true" tabindex="-1"></a>                         <span class="at">legendIconSize =</span> <span class="dv">5</span>, </span>
+<span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>                         <span class="at">lab =</span> <span class="cn">NULL</span>,</span>
+<span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>                         <span class="at">title =</span> <span class="st">"All samples"</span>, </span>
+<span id="cb51-8"><a href="#cb51-8" aria-hidden="true" tabindex="-1"></a>                         <span class="at">subtitle =</span> <span class="st">"NTCs removed"</span>)</span>
+<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb51-10"><a href="#cb51-10" aria-hidden="true" tabindex="-1"></a>pca.plot.slide</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div id="fig-PCAslide" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/fig-PCAslide-1.png" class="img-fluid figure-img" width="672"></p>
+<figcaption class="figure-caption">Figure&nbsp;13: PCA colored by Slide</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

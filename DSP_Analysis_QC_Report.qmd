@@ -1,0 +1,620 @@
+---
+title: "DSP Analysis QC Report"
+format:
+  html:
+    code-fold: true
+editor: visual
+
+params:
+  data.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
+  results.folder: "/Users/cauleyes/CCBR/CCBR-1245_Ramaswami/Results/June2024/kshv_gene_analysis/"
+  run.folder: "6_4_2024/"
+  genes.of.interest: c("A2M", "CD44")
+---
+
+## Load Libraries
+
+```{r Load Libraries}
+#| warning: false
+#| message: false
+
+# Load all relevant libraries
+
+library(DSPWorkflow)
+library(GeomxTools)
+library(dplyr)
+library(limma)
+library(edgeR)
+library(ggplot2)
+library(ggrepel)
+library(stringr)
+library(PCAtools)
+library(readxl)
+library(gridExtra)
+library(grid)
+library(knitr)
+```
+
+## Initialization
+
+```{r Initialization}
+
+# Input file parameters
+
+pkc.file.name <- "Hs_R_NGS_WTA_v1.0.pkc"
+pkc.file.path <- paste0(params$data.folder, pkc.file.name)
+
+annotation.file.name <- "annotation_Krug_CPTR_5_april2024_NC_edit.xlsx"
+annotation.file.path <- paste0(params$data.folder, annotation.file.name)
+
+dcc.files <- list.files(file.path(paste0(params$data.folder, "dcc")),
+  pattern = ".dcc$",
+  full.names = TRUE,
+  recursive = TRUE
+)
+
+# Annotation parameters
+annotation.sheet.name <- "annotation"
+sample.id.field.name <- "Sample_ID"
+panel.field.name <- "panel"
+slide.field.name <- "slide name"
+class.field.name <- "class"
+region.field.name <- "Region"
+segment.field.name <- "segment"
+area.field.name <- "area"
+nuclei.field.name <- "nuclei"
+exclude.sankey <- FALSE
+segment.id.length <- 4
+
+# Create the GeoMxSet Object
+
+sdesign.list <- studyDesign(dcc.files = dcc.files, 
+                                pkc.files = pkc.file.path,
+                                pheno.data.file = annotation.file.path,
+                                pheno.data.sheet = annotation.sheet.name,
+                                pheno.data.dcc.col.name = sample.id.field.name,
+                                protocol.data.col.names = c("ROI"),
+                                experiment.data.col.names = panel.field.name,
+                                slide.name.col = slide.field.name, 
+                                class.col = class.field.name, 
+                                region.col = region.field.name, 
+                                segment.col = segment.field.name,
+                                area.col = area.field.name,
+                                nuclei.col = nuclei.field.name, 
+                                sankey.exclude.slide = exclude.sankey, 
+                                segment.id.length = segment.id.length)
+
+```
+
+## Object Summary
+
+@fig-sankey shows a summary of AOIs per annotation
+
+```{r Object Summary}
+#| label: fig-sankey
+#| fig-cap: "Sankey Plot"
+#| warning: false
+
+# Print the Sankey Plot
+sdesign.list$sankey.plot
+
+```
+
+## QC and Filtering
+
+```{r QC and Filtering}
+
+
+qc.output <-  qcProc(object = sdesign.list$object,
+                        min.segment.reads = 1000, 
+                        percent.trimmed = 80,    
+                        percent.stitched = 80,   
+                        percent.aligned = 80,    
+                        percent.saturation = 50, 
+                        min.negative.count = 3,   
+                        max.ntc.count = 1000,     
+                        min.nuclei = 200,         
+                        min.area = 1000,
+                        print.plots = TRUE)
+    
+
+```
+
+Summary of QC for AOIs and Probes
+
+```{r QC Summary}
+
+qc.output$table
+
+```
+
+#### AOI QC
+
+AOI distribution by parameter and annotation
+
+```{r AOI Plots}
+
+# Print AOI plots
+qc.output$plot$trimmed
+qc.output$plot$aligned
+qc.output$plot$stitched
+qc.output$plot$saturated
+qc.output$plot$neg.plot
+
+
+```
+
+AOIs that have been flagged with the given QC parameters
+
+```{r AOI Flags}
+
+# Print AOI flags
+
+# Subset this table so that it is only TRUE columns and segment ID
+# Cleaner table to print out with gt?
+qc.output$segment.flags
+```
+
+### Probe QC
+
+Probes that have been flagged as either local or global outliers.
+
+```{r}
+
+# Print probe flags
+
+# Change this table so that it prints segmentID instead of sampleID
+# Cleaner table to print out with gt?
+qc.output$probe.flags
+
+```
+
+### Filtering
+
+```{r Filtering}
+
+object <- qc.output$object
+
+# Set up lists of segment IDs
+segment.list.total <- pData(object)$segmentID
+
+# Define Modules
+modules <- gsub(".pkc", "", pkc.file.name)
+
+# Calculate limit of quantification (LOQ) in each segment
+# LOQ = geomean(NegProbes) * geoSD(NegProbes)^(LOQ cutoff)
+# LOQ is calculated for each module (pkc file)
+loq <- data.frame(row.names = colnames(object))
+
+loq.min <- 2
+loq.cutoff <- 2
+
+for(module in modules) {
+  vars <- paste0(c("NegGeoMean_", "NegGeoSD_"),
+                 module)
+  if(all(vars[1:2] %in% colnames(pData(object)))) {
+    
+    neg.geo.mean <- vars[1]
+    neg.geo.sd <- vars[2]
+    
+    loq[, module] <-
+      pmax(loq.min,
+           pData(object)[, neg.geo.mean] * 
+             pData(object)[, neg.geo.sd] ^ loq.cutoff)
+  }
+}
+
+# Store the loq df in the annotation df
+pData(object)$loq <- loq
+
+# Setup a master loq matrix
+loq.mat <- c()
+
+
+for(module in modules) {
+  # Gather rows with the given module
+  ind <- fData(object)$Module == module
+  
+  # Check if each feature has counts above the LOQ
+  mat.i <- t(esApply(object[ind, ], MARGIN = 1,
+                     FUN = function(x) {
+                       x > loq[, module]
+                     }))
+  
+  # Store results in the master loq matrix
+  loq.mat <- rbind(loq.mat, mat.i)
+}
+
+# ensure ordering since this is stored outside of the geomxSet
+loq.mat <- loq.mat[fData(object)$TargetName, ]
+
+# Evaluate and Filter Segment Gene Detection Rate
+# Save detection rate information to pheno data
+pData(object)$GenesDetected <- colSums(loq.mat, na.rm = TRUE)
+pData(object)$GeneDetectionRate <- 100*(pData(object)$GenesDetected / nrow(object))
+
+# Establish detection bins
+detection.bins <- c("less_than_1", "1_5", "5_10", "10_15", "greater_than_15")
+
+# Determine detection thresholds: 1%, 5%, 10%, 15%, >15%
+pData(object)$DetectionThreshold <- 
+  cut(pData(object)$GeneDetectionRate,
+      breaks = c(0, 1, 5, 10, 15, 100),
+      labels = detection.bins)
+
+```
+
+#### Overall Gene Detection per AOI
+
+@fig-GeneDetectionbByAOI shows detection rate per AOI, colored by region.
+
+```{r Overall Gene Detection per AOI}
+#| label: fig-GeneDetectionbByAOI
+#| tbl-cap: "Overall Gene Detection per AOI"
+#| warning: false
+
+# stacked bar plot of different cut points (1%, 5%, 10%, 15%)
+segment.stacked.bar.plot <- ggplot(pData(object),
+                          aes(x = DetectionThreshold)) +
+  geom_bar(aes(fill = region)) +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
+  theme_bw() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Gene Detection Rate",
+         y = "Segments, #",
+         fill = "AOI Annotation")
+
+
+print(segment.stacked.bar.plot)
+```
+
+AOIs in the low detection bin of 1-5%
+
+```{r Low Detection AOI}
+
+# cut percent genes detected at 1, 5, 10, 15
+segment.table <- kable(table(pData(object)$DetectionThreshold, 
+                             pData(object)$class))
+
+# Make a list of segments with low detection
+low.detection.segments <- pData(object) %>% 
+  filter(GeneDetectionRate < 5) %>% 
+  select(any_of(c("segmentID", "GeneDetectionRate")))
+rownames(low.detection.segments) <- NULL
+
+print(low.detection.segments)
+
+
+```
+
+Gene detection for all AOIs
+
+```{r Gene Detection All AOIs}
+
+# Export a summary of the segment gene detection
+segment.detection.summary <- pData(object) %>% 
+  select(any_of(c("segmentID", "GeneDetectionRate", "DetectionThreshold")))
+
+head(segment.detection.summary)
+
+```
+
+##### Filter out AOIs with low detection
+
+```{r Filter by AOI}
+
+# Filter the data using the cutoff for gene detection rate
+segment.gene.rate.cutoff <- 0
+
+object.segment.filtered <-
+    object[, pData(object)$GeneDetectionRate >= segment.gene.rate.cutoff]
+
+```
+
+#### Detection per Gene
+
+```{r Detection per Gene}
+
+# Evaluate and Filter Study-wide Gene Detection Rate 
+# Calculate detection rate:
+loq.mat <- loq.mat[, colnames(object.segment.filtered)]
+
+fData(object.segment.filtered)$DetectedSegments <- rowSums(loq.mat, na.rm = TRUE)
+fData(object.segment.filtered)$DetectionRate <-
+  100*(fData(object.segment.filtered)$DetectedSegments / nrow(pData(object)))
+
+# Establish detection bins
+detection.bins <- c("0", "less_than_1", "1_5", "5_10", "10_20", "20_30", "30_40", "40_50", "greater_than_50")
+
+# Determine detection thresholds: 1%, 5%, 10%, 15%, >15%
+fData(object.segment.filtered)$DetectionThreshold <- 
+  cut(fData(object.segment.filtered)$DetectionRate,
+      breaks = c(-1, 0, 1, 5, 10, 20, 30, 40, 50, 100),
+      labels = detection.bins)
+
+```
+
+@fig-DetectionPerGene shows the percent of all AOIs individual genes are detected within
+
+```{r Detection per Gene Plot}
+#| label: fig-DetectionPerGene
+#| fig-cap: "Gene Detection Percent of All AOIs"
+#| warning: false
+
+gene.stacked.bar.plot <- ggplot(fData(object.segment.filtered),
+                          aes(x = DetectionThreshold)) +
+  geom_bar(aes(fill = Module)) +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
+  theme_bw() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Gene Detection Rate",
+         y = "Genes, #",
+         fill = "Probe Set")
+
+print(gene.stacked.bar.plot)
+```
+
+Gene detection rates for specified genes of interest
+
+```{r Genes of Interest}
+#| label: tbl-GenesOfInterest
+#| tbl-cap: "Gene of Interest Detection Rate"
+#| warning: false
+
+# Gene of interest detection table
+goi <- c("A2M", "CD44")
+
+goi.table <- data.frame(Gene = goi,
+                        Number = fData(object.segment.filtered)[goi, "DetectedSegments"],
+                        DetectionRate = fData(object.segment.filtered)[goi, "DetectionRate"])
+
+print(goi.table)
+```
+
+@fig-DetectionPerGeneLoss shows the loss of percentage of all AOIs individual genes are detected within
+
+```{r Gene Detection Rates Loss Plot}
+#| label: fig-DetectionPerGeneLoss
+#| fig-cap: "Gene Detection Percent of All AOIs"
+#| warning: false
+
+# Plot detection rate:
+plot.detect <- data.frame(Freq = c(1, 5, 10, 20, 30, 50))
+plot.detect$Number <-
+  unlist(lapply(c(1, 5, 10, 20, 30, 50),
+                function(x) {sum(fData(object.segment.filtered)$DetectionRate >= x)}))
+
+plot.detect$Rate <- plot.detect$Number / nrow(fData(object.segment.filtered))
+rownames(plot.detect) <- plot.detect$Freq
+
+genes.detected.plot <- ggplot(plot.detect, aes(x = as.factor(Freq), y = Rate, fill = Rate)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = formatC(Number, format = "d", big.mark = ",")),
+            vjust = 1.6, color = "black", size = 4) +
+  scale_fill_gradient2(low = "orange2", mid = "lightblue",
+                       high = "dodgerblue3", midpoint = 0.65,
+                       limits = c(0,1),
+                       labels = scales::percent) +
+  theme_bw() +
+  scale_y_continuous(labels = scales::percent, limits = c(0,1),
+                     expand = expansion(mult = c(0, 0))) +
+  labs(x = "% of Segments",
+       y = "Genes Detected, % of Panel > loq")
+
+print(genes.detected.plot)
+
+
+```
+
+Summary of all gene detection rates
+
+```{r Gene Detection Rate Summary}
+
+# Gather a summary of the every gene's detection percentage in all AOIs
+gene.detection.summary <- fData(object.segment.filtered) %>% 
+  select(any_of(c("segmentID", "DetectionRate", "DetectionThreshold")))
+
+head(gene.detection.summary)
+```
+
+##### Filter out genes with low detection
+
+```{r Filter Genes}
+
+# Set the cutoff for gene detection
+study.gene.rate.cutoff <- 0.00
+
+# Subset for genes above the study gene detection rate cutoff
+# Manually include the negative control probe, for downstream use
+negative.probe.fData <- subset(fData(object.segment.filtered), CodeClass == "Negative")
+neg.probes <- unique(negative.probe.fData$TargetName)
+object.gene.filtered <- object.segment.filtered[fData(object.segment.filtered)$DetectionRate >= study.gene.rate.cutoff |
+                   fData(object.segment.filtered)$TargetName %in% neg.probes, ]
+```
+
+### Normalization
+
+```{r Normalization}
+
+q3.normalization.output <- geomxNorm(
+                                  object = object.gene.filtered, 
+                                  norm = "q3")
+    
+    
+neg.normalization.output <- geomxNorm(
+                                  object = object.gene.filtered, 
+                                  norm = "neg")
+    
+```
+
+#### Normalized Reads vs. Negative Background
+
+@fig-Q3vsBackground shows the quartile-3 (Q3) normalization counts compared to negative probes
+
+```{r Mulit-Plot for Q3 Normalization}
+#| label: fig-Q3vsBackground
+#| fig-cap: "Q3 Normalized Counts versus Background"
+#| warning: false
+
+q3.normalization.output$multi.plot
+
+
+```
+
+@fig-NegvsBackground shows the negative normalization counts compared to negative probes
+
+```{r Mulit-Plot for Neg Normalization}
+#| label: fig-NegvsBackground
+#| fig-cap: "Negative Normalized Counts versus Background"
+#| warning: false
+
+neg.normalization.output$multi.plot
+```
+
+**Example AOIs**
+
+@fig-RawReadBoxPlots shows the raw read count boxplots for an example 10 AOIs
+
+```{r Raw reads boxplots}
+#| label: fig-RawReadBoxPlots
+#| fig-cap: "Raw Counts for an Example 10 AOIs "
+#| warning: false
+
+q3.normalization.output$boxplot.raw
+```
+
+@fig-Q3NormBoxPlots shows the Q3 normalized read count boxplots for an example 10 AOIs
+
+```{r Q3 norm boxplots}
+#| label: fig-Q3NormBoxPlots
+#| fig-cap: "Q3 Normalized Counts for an Example 10 AOIs "
+#| warning: false
+
+q3.normalization.output$boxplot.norm
+```
+
+@fig-NegNormBoxPlots shows the negative normalized read count boxplots for an example 10 AOIs
+
+```{r Neg norm boxplots}
+#| label: fig-NegNormBoxPlots
+#| fig-cap: "Negative Normalized Counts for an Example 10 AOIs "
+#| warning: false
+
+neg.normalization.output$boxplot.norm
+```
+
+#### Principal Component Analysis (PCA)
+
+```{r PCA}
+
+# See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction
+
+# Load the Geomx object
+object <- q3.normalization.output$object
+
+# Gather the the normalized counts
+norm.counts.df <- as.data.frame(object@assayData$q_norm)
+
+# Convert counts to log2
+log.counts.df <- norm.counts.df %>% 
+  mutate_all(~ log2(.)) %>% 
+  rename_all(~ gsub("\\.dcc", "", .))
+
+# Remove the negative controls from the log counts
+control.probes <- c("NegProbe-WTX")
+log.counts.df <- log.counts.df[!(rownames(log.counts.df) %in% control.probes), ]
+
+# Load the annotation
+annotation <- pData(object)
+
+# Remove NTCs
+cleaned.annotation.df <- as.data.frame(annotation[annotation$'slide_name' != "No Template Control", ])
+
+# Order of rownames of annotation need to match columns of count data
+cleaned.annotation.df <- cleaned.annotation.df[order(rownames(cleaned.annotation.df)), ]
+
+log.counts.df <- log.counts.df[order(colnames(log.counts.df))]
+
+# Remove .dcc from Sample ID row names
+cleaned.annotation.df <- cleaned.annotation.df %>% `rownames<-`(sub("\\.dcc", "", rownames(.)))
+
+# Generate a PCA table for all samples
+pca.table <- pca(log.counts.df, 
+                 metadata = cleaned.annotation.df, 
+                 removeVar = 0.1)
+
+```
+
+```{r PCA for segment}
+#| label: fig-PCAsegment
+#| fig-cap: "PCA colored by Segment"
+#| warning: false
+
+pca.plot.segment <- biplot(pca.table, 
+                         colby = "segment", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "All samples", 
+                         subtitle = "NTCs removed")
+
+pca.plot.segment
+
+
+```
+
+```{r PCA for region}
+#| label: fig-PCAregion
+#| fig-cap: "PCA colored by Region"
+#| warning: false
+
+pca.plot.region <- biplot(pca.table, 
+                         colby = "region", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "All samples", 
+                         subtitle = "NTCs removed")
+
+pca.plot.region
+
+```
+
+```{r PCA for class}
+#| label: fig-PCAclass
+#| fig-cap: "PCA colored by Class"
+#| warning: false
+
+pca.plot.class <- biplot(pca.table, 
+                         colby = "class", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "All samples", 
+                         subtitle = "NTCs removed")
+
+pca.plot.class
+
+```
+
+```{r PCA for slide}
+#| label: fig-PCAslide
+#| fig-cap: "PCA colored by Slide"
+#| warning: false
+
+
+pca.plot.slide <- biplot(pca.table, 
+                         colby = "slide_name", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "All samples", 
+                         subtitle = "NTCs removed")
+
+pca.plot.slide
+
+```
