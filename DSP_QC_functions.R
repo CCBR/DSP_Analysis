@@ -62,7 +62,7 @@ make_MA <- function(contrast.field,
   
   ma.plot.norm <- ggplot(ma.plot.counts, aes(x = A.value, y = M.value)) +
     geom_point(alpha = 0.5, col = "black") + 
-    geom_smooth(method=lm, col="steelblue1") + 
+    geom_smooth(method=loess, col="steelblue1") + 
     geom_hline(yintercept = 0, lty = "dashed") + 
     labs(x = "Average log expression",
          y = paste0("log(", condition.label, ") - log(", reference.label, ")"), 
@@ -72,7 +72,7 @@ make_MA <- function(contrast.field,
   
   ma.plot.raw <- ggplot(ma.plot.counts, aes(x = A.raw.value, y = M.raw.value)) + 
     geom_point(alpha = 0.5, col = "black") + 
-    geom_smooth(method=lm, col="steelblue1") + 
+    geom_smooth(method=loess, col="steelblue1") + 
     geom_hline(yintercept = 0, lty = "dashed") + 
     labs(x = "Average log expression",
          y = paste0("log(", condition.label, ") - log(", reference.label, ")"), 

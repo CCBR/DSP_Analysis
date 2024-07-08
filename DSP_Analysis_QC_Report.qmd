@@ -33,7 +33,7 @@ library(gridExtra)
 library(grid)
 library(knitr)
 
-source("/Users/cauleyes/CPTR/DSP_NGS_Analysis/DSP_QC_functions.R")
+source("DSP_QC_functions.R")
 ```
 
 ## Initialization
@@ -675,6 +675,8 @@ grid.draw(MA.plots.q3)
 ```
 
 #### Negative Normalization
+
+grid.draw(MA.plots.neg)
 
 ```{r MA Plot Neg, message=FALSE, warning=FALSE}
 
