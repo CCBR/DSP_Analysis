@@ -113,7 +113,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(readxl)</span>
 <span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gridExtra)</span>
 <span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(grid)</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(knitr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(knitr)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">"/Users/cauleyes/CPTR/DSP_NGS_Analysis/DSP_QC_functions.R"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
 </section>
@@ -983,6 +985,92 @@ No id variables; using all as measure variables</code></pre>
 <figcaption class="figure-caption">Figure&nbsp;13: PCA colored by Slide</figcaption>
 </figure>
 </div>
+</div>
+</div>
+</section>
+</section>
+<section id="ma-plots" class="level3">
+<h3 class="anchored" data-anchor-id="ma-plots">MA Plots</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Set up pre and post normalization counts and convert to log</span></span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>pre.norm.counts <span class="ot">&lt;-</span></span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">log</span>(<span class="fu">as.data.frame</span>(q3.normalization.output<span class="sc">$</span>object<span class="sc">@</span>assayData<span class="sc">$</span>exprs), <span class="at">base =</span> <span class="dv">2</span>)</span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>post.q3norm.counts <span class="ot">&lt;-</span> <span class="fu">log</span>(<span class="fu">as.data.frame</span>(q3.normalization.output<span class="sc">$</span>object<span class="sc">@</span>assayData<span class="sc">$</span>q_norm), <span class="at">base =</span> <span class="dv">2</span>)</span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a>post.negnorm.counts <span class="ot">&lt;-</span> <span class="fu">log</span>(<span class="fu">as.data.frame</span>(neg.normalization.output<span class="sc">$</span>object<span class="sc">@</span>assayData<span class="sc">$</span>neg_norm), <span class="at">base =</span> <span class="dv">2</span>)</span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-10"><a href="#cb52-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Setup annotation groups for the ratio "M" (log A - log B)</span></span>
+<span id="cb52-11"><a href="#cb52-11" aria-hidden="true" tabindex="-1"></a>tumor.types <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"Biopsy"</span>)</span>
+<span id="cb52-12"><a href="#cb52-12" aria-hidden="true" tabindex="-1"></a>region.types <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"tumor"</span>, <span class="st">"vessel"</span>)</span>
+<span id="cb52-13"><a href="#cb52-13" aria-hidden="true" tabindex="-1"></a>source.types <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"Skin"</span>)</span>
+<span id="cb52-14"><a href="#cb52-14" aria-hidden="true" tabindex="-1"></a>segment.types <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"full_ROI"</span>)</span>
+<span id="cb52-15"><a href="#cb52-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-16"><a href="#cb52-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Define the name of the contrast</span></span>
+<span id="cb52-17"><a href="#cb52-17" aria-hidden="true" tabindex="-1"></a>contrast.name <span class="ot">&lt;-</span> <span class="fu">paste0</span>(tumor.types[[<span class="dv">1</span>]], </span>
+<span id="cb52-18"><a href="#cb52-18" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"_"</span>,</span>
+<span id="cb52-19"><a href="#cb52-19" aria-hidden="true" tabindex="-1"></a>                        source.types[[<span class="dv">1</span>]], </span>
+<span id="cb52-20"><a href="#cb52-20" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"_"</span>, </span>
+<span id="cb52-21"><a href="#cb52-21" aria-hidden="true" tabindex="-1"></a>                        segment.types[[<span class="dv">1</span>]], </span>
+<span id="cb52-22"><a href="#cb52-22" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"_"</span>, </span>
+<span id="cb52-23"><a href="#cb52-23" aria-hidden="true" tabindex="-1"></a>                        region.types[[<span class="dv">1</span>]], </span>
+<span id="cb52-24"><a href="#cb52-24" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"_"</span>, </span>
+<span id="cb52-25"><a href="#cb52-25" aria-hidden="true" tabindex="-1"></a>                        region.types[[<span class="dv">2</span>]])</span>
+<span id="cb52-26"><a href="#cb52-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-27"><a href="#cb52-27" aria-hidden="true" tabindex="-1"></a><span class="co"># Set up the annotations and raw counts for the MA plots</span></span>
+<span id="cb52-28"><a href="#cb52-28" aria-hidden="true" tabindex="-1"></a>contrast.field <span class="ot">&lt;-</span> <span class="st">"region"</span></span>
+<span id="cb52-29"><a href="#cb52-29" aria-hidden="true" tabindex="-1"></a>condition.label <span class="ot">&lt;-</span> <span class="st">"tumor"</span></span>
+<span id="cb52-30"><a href="#cb52-30" aria-hidden="true" tabindex="-1"></a>reference.label <span class="ot">&lt;-</span> <span class="st">"vessel"</span></span>
+<span id="cb52-31"><a href="#cb52-31" aria-hidden="true" tabindex="-1"></a>raw.log.counts <span class="ot">&lt;-</span> pre.norm.counts</span>
+<span id="cb52-32"><a href="#cb52-32" aria-hidden="true" tabindex="-1"></a>annotation.MA <span class="ot">&lt;-</span> annotation</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<section id="ma-plot-for-q3-normalization" class="level4">
+<h4 class="anchored" data-anchor-id="ma-plot-for-q3-normalization">MA Plot for Q3 Normalization</h4>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="co"># MA plots for two annotation groups to evaluate negative normalization</span></span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>log.counts <span class="ot">&lt;-</span> post.q3norm.counts</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>MA.plots.q3 <span class="ot">&lt;-</span> <span class="fu">make_MA</span>(<span class="at">contrast.field =</span> contrast.field, </span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>                       <span class="at">condition.label =</span> condition.label, </span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>                       <span class="at">reference.label =</span> reference.label, </span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>                       <span class="at">log.counts =</span> log.counts, </span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>                       <span class="at">raw.log.counts =</span> raw.log.counts, </span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>                       <span class="at">annotation =</span> annotation.MA)</span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a><span class="fu">grid.draw</span>(MA.plots.q3)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/MA%20Plot%20Q3-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="ma-plot-for-negative-normalization" class="level4">
+<h4 class="anchored" data-anchor-id="ma-plot-for-negative-normalization">MA Plot for Negative Normalization</h4>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="co"># MA plots for two annotation groups to evaluate negative normalization</span></span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>log.counts <span class="ot">&lt;-</span> post.negnorm.counts</span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a>MA.plots.neg <span class="ot">&lt;-</span> <span class="fu">make_MA</span>(<span class="at">contrast.field =</span> contrast.field, </span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a>                    <span class="at">condition.label =</span> condition.label, </span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a>                    <span class="at">reference.label =</span> reference.label, </span>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a>                    <span class="at">log.counts =</span> log.counts, </span>
+<span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a>                    <span class="at">raw.log.counts =</span> raw.log.counts, </span>
+<span id="cb54-9"><a href="#cb54-9" aria-hidden="true" tabindex="-1"></a>                    <span class="at">annotation =</span> annotation.MA)</span>
+<span id="cb54-10"><a href="#cb54-10" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb54-11"><a href="#cb54-11" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb54-12"><a href="#cb54-12" aria-hidden="true" tabindex="-1"></a><span class="fu">grid.draw</span>(MA.plots.neg)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="DSP_Analysis_QC_Report_files/figure-html/MA%20Plot%20Neg-1.png" class="img-fluid" width="672"></p>
 </div>
 </div>
 </section>

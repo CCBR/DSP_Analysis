@@ -9,7 +9,6 @@ params:
   data.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
   results.folder: "/Users/cauleyes/CCBR/CCBR-1245_Ramaswami/Results/June2024/kshv_gene_analysis/"
   run.folder: "6_4_2024/"
-  genes.of.interest: c("A2M", "CD44")
 ---
 
 ## Load Libraries
@@ -33,6 +32,8 @@ library(readxl)
 library(gridExtra)
 library(grid)
 library(knitr)
+
+source("/Users/cauleyes/CPTR/DSP_NGS_Analysis/DSP_QC_functions.R")
 ```
 
 ## Initialization
@@ -617,4 +618,76 @@ pca.plot.slide <- biplot(pca.table,
 
 pca.plot.slide
 
+```
+
+### MA Plots
+
+```{r}
+# Set up pre and post normalization counts and convert to log
+
+pre.norm.counts <-
+  log(as.data.frame(q3.normalization.output$object@assayData$exprs), base = 2)
+
+post.q3norm.counts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
+
+post.negnorm.counts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
+
+# Setup annotation groups for the ratio "M" (log A - log B)
+tumor.types <- c("Biopsy")
+region.types <- c("tumor", "vessel")
+source.types <- c("Skin")
+segment.types <- c("full_ROI")
+
+# Define the name of the contrast
+contrast.name <- paste0(tumor.types[[1]], 
+                        "_",
+                        source.types[[1]], 
+                        "_", 
+                        segment.types[[1]], 
+                        "_", 
+                        region.types[[1]], 
+                        "_", 
+                        region.types[[2]])
+
+# Set up the annotations and raw counts for the MA plots
+contrast.field <- "region"
+condition.label <- "tumor"
+reference.label <- "vessel"
+raw.log.counts <- pre.norm.counts
+annotation.MA <- annotation
+```
+
+#### Q3 Normalization
+
+```{r MA Plot Q3, message=FALSE, warning=FALSE}
+# MA plots for two annotation groups to evaluate negative normalization
+log.counts <- post.q3norm.counts
+
+MA.plots.q3 <- make_MA(contrast.field = contrast.field, 
+                       condition.label = condition.label, 
+                       reference.label = reference.label, 
+                       log.counts = log.counts, 
+                       raw.log.counts = raw.log.counts, 
+                       annotation = annotation.MA)
+  
+  
+grid.draw(MA.plots.q3)
+```
+
+#### Negative Normalization
+
+```{r MA Plot Neg, message=FALSE, warning=FALSE}
+
+# MA plots for two annotation groups to evaluate negative normalization
+log.counts <- post.negnorm.counts
+
+MA.plots.neg <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = log.counts, 
+                    raw.log.counts = raw.log.counts, 
+                    annotation = annotation.MA)
+  
+  
+grid.draw(MA.plots.neg)
 ```
