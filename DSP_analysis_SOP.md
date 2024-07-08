@@ -333,3 +333,21 @@ The output will be an object with normalized read counts.
 
 ### Action Step: Create MA Plots
 
+Run the `make_MA` function (sourced from the file `DSP_QC_functions.R`) using two annotation groups to compare. Usually this comparison will be meaningful to the experimental design, such as region A versus region B. Compare the Q3 and Negative normalization MA plots to the raw counts to evalue the effect of normalization on the distribution. 
+
+Example:
+
+```
+MA.plots.q3 <- make_MA(contrast.field = contrast.field, 
+                       condition.label = condition.label, 
+                       reference.label = reference.label, 
+                       log.counts = log.counts, 
+                       raw.log.counts = raw.log.counts, 
+                       annotation = annotation.MA)
+
+grid.draw(MA.plots.q3)
+```
+
+In the Quarto document, you will need to define the annotations to use in the construction of the MA plots. See the Quarto report example for more information.
+
+
