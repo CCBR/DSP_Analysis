@@ -510,23 +510,29 @@ neg.normalization.output$boxplot.norm
 
 # See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction
 
-# Load the Geomx object
-object <- q3.normalization.output$object
+# Load the Geomx objects
+object.q3 <- q3.normalization.output$object
+object.neg <- neg.normalization.output$object
 
 # Gather the the normalized counts
-norm.counts.df <- as.data.frame(object@assayData$q_norm)
+q3.norm.counts.df <- as.data.frame(object.q3@assayData$q_norm)
+neg.norm.counts.df <- as.data.frame(object.neg@assayData$neg_norm)
 
 # Convert counts to log2
-log.counts.df <- norm.counts.df %>% 
+q3.log.counts.df <- q3.norm.counts.df %>% 
+  mutate_all(~ log2(.)) %>% 
+  rename_all(~ gsub("\\.dcc", "", .))
+neg.log.counts.df <- neg.norm.counts.df %>% 
   mutate_all(~ log2(.)) %>% 
   rename_all(~ gsub("\\.dcc", "", .))
 
 # Remove the negative controls from the log counts
 control.probes <- c("NegProbe-WTX")
-log.counts.df <- log.counts.df[!(rownames(log.counts.df) %in% control.probes), ]
+q3.log.counts.df <- q3.log.counts.df[!(rownames(q3.log.counts.df) %in% control.probes), ]
+neg.log.counts.df <- neg.log.counts.df[!(rownames(neg.log.counts.df) %in% control.probes), ]
 
-# Load the annotation
-annotation <- pData(object)
+# Load the annotation (same for both normalization types)
+annotation <- pData(object.q3)
 
 # Remove NTCs
 cleaned.annotation.df <- as.data.frame(annotation[annotation$'slide_name' != "No Template Control", ])
@@ -534,89 +540,175 @@ cleaned.annotation.df <- as.data.frame(annotation[annotation$'slide_name' != "No
 # Order of rownames of annotation need to match columns of count data
 cleaned.annotation.df <- cleaned.annotation.df[order(rownames(cleaned.annotation.df)), ]
 
-log.counts.df <- log.counts.df[order(colnames(log.counts.df))]
+q3.log.counts.df <- q3.log.counts.df[order(colnames(q3.log.counts.df))]
+neg.log.counts.df <- neg.log.counts.df[order(colnames(neg.log.counts.df))]
 
 # Remove .dcc from Sample ID row names
 cleaned.annotation.df <- cleaned.annotation.df %>% `rownames<-`(sub("\\.dcc", "", rownames(.)))
 
-# Generate a PCA table for all samples
-pca.table <- pca(log.counts.df, 
+# Generate a PCA table for all samples for both normalization types
+q3.pca.table <- pca(q3.log.counts.df, 
+                 metadata = cleaned.annotation.df, 
+                 removeVar = 0.1)
+neg.pca.table <- pca(neg.log.counts.df, 
                  metadata = cleaned.annotation.df, 
                  removeVar = 0.1)
 
+
 ```
 
-```{r PCA for segment}
-#| label: fig-PCAsegment
-#| fig-cap: "PCA colored by Segment"
+#### PCA by Segment
+
+```{r PCA for Q3 segment}
+#| label: fig-PCAsegmentQ3
+#| fig-cap: "PCA colored by Segment for Q3 Normalization"
 #| warning: false
 
-pca.plot.segment <- biplot(pca.table, 
+q3.pca.plot.segment <- biplot(q3.pca.table, 
                          colby = "segment", 
                          legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
+                         legendLabSize = 6, 
+                         legendIconSize = 3, 
                          lab = NULL,
-                         title = "All samples", 
+                         title = "Q3 Normalization", 
                          subtitle = "NTCs removed")
 
-pca.plot.segment
-
+print(q3.pca.plot.segment)
 
 ```
 
-```{r PCA for region}
-#| label: fig-PCAregion
-#| fig-cap: "PCA colored by Region"
+```{r PCA for Negative segment}
+#| label: fig-PCAsegmentNeg
+#| fig-cap: "PCA colored by Segment for Negative Normalization"
 #| warning: false
 
-pca.plot.region <- biplot(pca.table, 
+neg.pca.plot.segment <- biplot(neg.pca.table, 
+                         colby = "segment", 
+                         legendPosition = "right", 
+                         legendLabSize = 6, 
+                         legendIconSize = 3, 
+                         lab = NULL,
+                         title = "Negative Normalization", 
+                         subtitle = "NTCs removed")
+
+print(q3.pca.plot.segment)
+print(neg.pca.plot.segment)
+
+```
+
+#### PCA by Region
+
+```{r PCA for Q3 region}
+#| label: fig-PCAregionQ3
+#| fig-cap: "PCA colored by Region for Q3 Normalization"
+#| warning: false
+
+q3.pca.plot.region <- biplot(q3.pca.table, 
                          colby = "region", 
                          legendPosition = "right", 
                          legendLabSize = 10, 
                          legendIconSize = 5, 
                          lab = NULL,
-                         title = "All samples", 
+                         title = "Q3 Normalization", 
                          subtitle = "NTCs removed")
 
-pca.plot.region
+
+print(q3.pca.plot.region)
 
 ```
 
-```{r PCA for class}
-#| label: fig-PCAclass
-#| fig-cap: "PCA colored by Class"
+```{r PCA for Neg region}
+#| label: fig-PCAregionNeg
+#| fig-cap: "PCA colored by Region for Negative Normalization"
 #| warning: false
 
-pca.plot.class <- biplot(pca.table, 
+neg.pca.plot.region <- biplot(neg.pca.table, 
+                         colby = "region", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "Negative Normalization", 
+                         subtitle = "NTCs removed")
+
+print(neg.pca.plot.region)
+
+```
+
+#### PCA by Class
+
+```{r PCA for Q3 class}
+#| label: fig-PCAclassQ3
+#| fig-cap: "PCA colored by Class for Q3 Normalization"
+#| warning: false
+
+q3.pca.plot.class <- biplot(q3.pca.table, 
                          colby = "class", 
                          legendPosition = "right", 
                          legendLabSize = 10, 
                          legendIconSize = 5, 
                          lab = NULL,
-                         title = "All samples", 
+                         title = "Q3 Normalization", 
                          subtitle = "NTCs removed")
 
-pca.plot.class
+print(q3.pca.plot.class)
 
 ```
 
-```{r PCA for slide}
-#| label: fig-PCAslide
-#| fig-cap: "PCA colored by Slide"
+```{r PCA for Negative class}
+#| label: fig-PCAclassNeg
+#| fig-cap: "PCA colored by Class for Negative Normalization"
+#| warning: false
+
+neg.pca.plot.class <- biplot(neg.pca.table, 
+                         colby = "class", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "Negative Normalization", 
+                         subtitle = "NTCs removed")
+
+print(neg.pca.plot.class)
+
+```
+
+#### PCA by Slide
+
+```{r PCA for Q3 slide}
+#| label: fig-PCAslideQ3
+#| fig-cap: "PCA colored by Slide for Q3 Normalization"
 #| warning: false
 
 
-pca.plot.slide <- biplot(pca.table, 
+q3.pca.plot.slide <- biplot(q3.pca.table, 
                          colby = "slide_name", 
                          legendPosition = "right", 
                          legendLabSize = 10, 
                          legendIconSize = 5, 
                          lab = NULL,
-                         title = "All samples", 
+                         title = "Q3 Normalization", 
                          subtitle = "NTCs removed")
 
-pca.plot.slide
+print(q3.pca.plot.slide)
+
+```
+
+```{r PCA for Neg slide}
+#| label: fig-PCAslideNeg
+#| fig-cap: "PCA colored by Slide for Negative Normalization"
+#| warning: false
+
+neg.pca.plot.slide <- biplot(neg.pca.table, 
+                         colby = "slide_name", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "Negative Normalization", 
+                         subtitle = "NTCs removed")
+
+print(neg.pca.plot.slide)
 
 ```
 
