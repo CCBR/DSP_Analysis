@@ -32,6 +32,8 @@ library(readxl)
 library(gridExtra)
 library(grid)
 library(knitr)
+library(gt)
+library(tidyr)
 
 source("DSP_QC_functions.R")
 ```
@@ -65,7 +67,7 @@ segment.field.name <- "segment"
 area.field.name <- "area"
 nuclei.field.name <- "nuclei"
 exclude.sankey <- FALSE
-segment.id.length <- 4
+segment.id.length <- 8
 
 # Create the GeoMxSet Object
 
@@ -151,9 +153,22 @@ AOIs that have been flagged with the given QC parameters
 
 # Print AOI flags
 
-# Subset this table so that it is only TRUE columns and segment ID
-# Cleaner table to print out with gt?
-qc.output$segment.flags
+flag.column.detect <- sapply(qc.output$segment.flags, is.logical)
+flag.column.names <- names(qc.output$segment.flags[flag.column.detect])
+
+# A function for coloring TRUE flags as red
+red.flag <- function(x) {
+  x <- as.logical(x)
+  ifelse(x, "red", "white") 
+  }
+
+# Create the table using the flag coloring function
+qc.output$segment.flags %>% 
+  gt() %>% 
+  data_color(columns = flag.column.names, 
+                 fn = red.flag, 
+                 alpha = 0.7)
+
 ```
 
 ### Probe QC
@@ -162,11 +177,46 @@ Probes that have been flagged as either local or global outliers.
 
 ```{r}
 
-# Print probe flags
+# Create the table for probe flags
+probe.flags.df <- qc.output$probe.flags %>% separate_rows(LocalFlag, sep = ",")
 
-# Change this table so that it prints segmentID instead of sampleID
-# Cleaner table to print out with gt?
-qc.output$probe.flags
+# Rename the dcc file name column
+probe.flags.df$Sample_ID <- probe.flags.df$LocalFlag
+
+# Grab the annotation for only the columns to map
+annotation <- pData(qc.output$object)
+annotation$Sample_ID <- rownames(annotation)
+
+annotation.subset <- annotation %>% 
+  select(Sample_ID, segmentID)
+
+# Map the AOI names in the flags to the segmentID
+probe.flags.df <- merge(probe.flags.df, annotation.subset, by = "Sample_ID")
+
+# Remove the dcc file name column 
+probe.flags.table <- probe.flags.df %>% 
+  select(TargetName, RTS_ID, segmentID, FlagType)
+
+# For a summary of only probe names
+probe.flag.summary <- qc.output$probe.flags %>% 
+  select(TargetName, RTS_ID, FlagType)
+
+
+# Toggle to include all flags or only summary
+include.all <- FALSE
+
+# For all flags including segment ID name
+if(include.all == TRUE){ 
+  
+  probe.flags.table %>% 
+  gt()
+  
+} else {
+  
+  probe.flag.summary %>% 
+  gt()
+  
+}
 
 ```
 
@@ -283,8 +333,9 @@ low.detection.segments <- pData(object) %>%
   select(any_of(c("segmentID", "GeneDetectionRate")))
 rownames(low.detection.segments) <- NULL
 
-print(low.detection.segments)
-
+# Print low detection segment table
+low.detection.segments %>% 
+  gt()
 
 ```
 
@@ -296,7 +347,6 @@ Gene detection for all AOIs
 segment.detection.summary <- pData(object) %>% 
   select(any_of(c("segmentID", "GeneDetectionRate", "DetectionThreshold")))
 
-head(segment.detection.summary)
 
 ```
 
@@ -369,7 +419,10 @@ goi.table <- data.frame(Gene = goi,
                         Number = fData(object.segment.filtered)[goi, "DetectedSegments"],
                         DetectionRate = fData(object.segment.filtered)[goi, "DetectionRate"])
 
-print(goi.table)
+
+# Print the GOI table
+goi.table %>% 
+  gt()
 ```
 
 @fig-DetectionPerGeneLoss shows the loss of percentage of all AOIs individual genes are detected within
@@ -414,8 +467,6 @@ Summary of all gene detection rates
 # Gather a summary of the every gene's detection percentage in all AOIs
 gene.detection.summary <- fData(object.segment.filtered) %>% 
   select(any_of(c("segmentID", "DetectionRate", "DetectionThreshold")))
-
-head(gene.detection.summary)
 ```
 
 ##### Filter out genes with low detection
@@ -435,7 +486,7 @@ object.gene.filtered <- object.segment.filtered[fData(object.segment.filtered)$D
 
 ### Normalization
 
-```{r Normalization}
+```{r Normalization, warning=FALSE, message=FALSE}
 
 q3.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
@@ -506,7 +557,7 @@ neg.normalization.output$boxplot.norm
 
 #### Principal Component Analysis (PCA)
 
-```{r PCA}
+```{r PCA, warning=FALSE, message=FALSE}
 
 # See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction
 
@@ -591,7 +642,6 @@ neg.pca.plot.segment <- biplot(neg.pca.table,
                          title = "Negative Normalization", 
                          subtitle = "NTCs removed")
 
-print(q3.pca.plot.segment)
 print(neg.pca.plot.segment)
 
 ```
