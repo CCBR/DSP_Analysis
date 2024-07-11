@@ -7,8 +7,8 @@ editor: visual
 
 params:
   data.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
-  results.folder: "/Users/cauleyes/CCBR/CCBR-1245_Ramaswami/Results/June2024/kshv_gene_analysis/"
-  run.folder: "6_4_2024/"
+  results.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
+  run.folder: "7_10_2024/"
 ---
 
 ## Load Libraries
@@ -34,6 +34,7 @@ library(grid)
 library(knitr)
 library(gt)
 library(tidyr)
+library(openxlsx)
 
 source("DSP_QC_functions.R")
 ```
@@ -218,6 +219,7 @@ if(include.all == TRUE){
   
 }
 
+
 ```
 
 ### Filtering
@@ -347,7 +349,6 @@ Gene detection for all AOIs
 segment.detection.summary <- pData(object) %>% 
   select(any_of(c("segmentID", "GeneDetectionRate", "DetectionThreshold")))
 
-
 ```
 
 ##### Filter out AOIs with low detection
@@ -466,7 +467,10 @@ Summary of all gene detection rates
 
 # Gather a summary of the every gene's detection percentage in all AOIs
 gene.detection.summary <- fData(object.segment.filtered) %>% 
-  select(any_of(c("segmentID", "DetectionRate", "DetectionThreshold")))
+  mutate(gene = rownames(fData(object.segment.filtered))) %>% 
+  select(any_of(c("gene", "DetectionRate", "DetectionThreshold")))
+
+
 ```
 
 ##### Filter out genes with low detection
@@ -482,6 +486,33 @@ negative.probe.fData <- subset(fData(object.segment.filtered), CodeClass == "Neg
 neg.probes <- unique(negative.probe.fData$TargetName)
 object.gene.filtered <- object.segment.filtered[fData(object.segment.filtered)$DetectionRate >= study.gene.rate.cutoff |
                    fData(object.segment.filtered)$TargetName %in% neg.probes, ]
+```
+
+**Write QC Output File**
+
+```{r Write QC output}
+
+# Start the QC output excel workbook
+qc.info.output <- createWorkbook()
+
+# Add the AOI flag info to the output file
+addWorksheet(qc.info.output, "AOI QC Flags")
+writeData(qc.info.output, sheet = "AOI QC Flags", qc.output$segment.flags)
+
+# Add the probe flag QC info to the output file
+addWorksheet(qc.info.output, "Probe QC Flags")
+writeData(qc.info.output, sheet = "Probe QC Flags", probe.flags.table)
+
+# Add the AOI detection QC info
+addWorksheet(qc.info.output, "AOI Detection Rate")
+writeData(qc.info.output, sheet = "AOI Detection Rate", segment.detection.summary)
+
+# Add the Gene detection QC info to the output file
+addWorksheet(qc.info.output, "Gene Detection Rate")
+writeData(qc.info.output, sheet = "Gene Detection Rate", gene.detection.summary)
+
+# Save the QC output file
+saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
 ```
 
 ### Normalization
