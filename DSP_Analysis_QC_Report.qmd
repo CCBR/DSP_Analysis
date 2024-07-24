@@ -215,17 +215,40 @@ print(sankey.plot)
 
 AOI.counts <- sankey.count.data
 
-AOI.counts$AOI_count <- AOI.counts$n
-AOI.counts$type <- AOI.counts$x
+AOI.counts$AOI_count <- as.numeric(AOI.counts$n)
+AOI.counts$type <- as.character(AOI.counts$x)
 AOI.counts$annotation <- AOI.counts$y
 
-AOI.counts  <-  AOI.counts %>% 
-  select(all_of(c("AOI_count", "type", "annotation")))
+AOI.annotation.sum <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(AOI.annotation.sum) <- c("annotation", "AOI_sum")
 
-AOI.count.plot <- ggplot(AOI.counts, aes(x = annotation, y = AOI_count)) + 
+# Create a data frame of AOI sums per annotation 
+for(anno in unique(AOI.counts$annotation)){
+  
+  # Filter for a specific annotation
+  anno.subset <- AOI.counts %>% 
+    filter(annotation == anno)
+  
+  # Add together the AOI counts
+  anno.sum.row <- data.frame(AOI_sum = sum(anno.subset$AOI_count), annotation = anno)
+  
+  # Append to the master AOI sum df
+  AOI.annotation.sum <- rbind(AOI.annotation.sum, anno.sum.row)
+  
+}
+
+AOI.counts.all <- merge(AOI.annotation.sum, AOI.counts, by = "annotation")
+
+AOI.counts.all  <-  AOI.counts.all %>% 
+  select(all_of(c("AOI_sum", "type", "annotation"))) %>% 
+  distinct()
+
+AOI.count.plot <- ggplot(AOI.counts.all, aes(x = annotation, y = AOI_sum)) + 
   geom_bar(stat = "identity") + 
   facet_wrap(~ type, ncol = 2, scales = "free_x") + 
-  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) + 
+  geom_text(aes(label = AOI_sum), vjust = -0.3, size = 3.5) +
+  labs(x = NULL, y = "AOI Count")
 
 print(AOI.count.plot)
 
