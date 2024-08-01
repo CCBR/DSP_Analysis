@@ -321,14 +321,24 @@ neg.normalization.output <- geomxNorm(
 
 The output will be an object with normalized read counts.
 
+
+#### Normalization Information
+
+https://rdrr.io/github/Nanostring-Biostats/GeomxTools/src/R/NanoStringGeoMxSet-normalize.R
+
 ## 4. Post-Normalization Visualization
-
-### Action Step: Create PCA Plots for Normalization Types
-
-
 
 ### Action Step: Compare Normalized Reads to Background
 
+The `geomxNorm` function will output several plots that compares the Q3 value of each AOI to the mean counts of the negative probes, referred to as the negative background. Evaluate these plots for AOIs that have Q3 values that do not rise above the negative background, or do not follow the same trend of other AOIs of distance from Q3 to background. These plots are labeled by the annottion field region to check for bias. 
+
+### Action Step: Create PCA Plots for Normalization Types
+
+Run the `pca` function to generate principle component (PC) data for each normalization type. Run `biplot` to plot the two highest PCs as a dot plot where each dot represents an AOI and is labeled using one annotation field. Following the QC report, the four main annotaiton fields of slide_name, class, region, and segment are used to create one plot per normalization type per annotaiton field for 8 total PCA plots. Also create PCA plots any additional annotaiton fields of interest. 
+
+Compare the normalization types for each annotation field. Depending on the experiment, the AOIs should cluster based on the annotation fields that represent biological variation and not technical variation. 
+
+For example, AOIs clustering based on the anatomical region can be explained by gene expression differences. AOIs clustering based on the slide may represent differences in the slide preparation that affect the probe counts, which is what normalization aims to remove before down stream analysis.
 
 
 ### Action Step: Create MA Plots
