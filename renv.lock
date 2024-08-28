@@ -160,6 +160,19 @@
       ],
       "Hash": "fd8d03c43e175afce12c1012711a05cc"
     },
+    "ComplexUpset": {
+      "Package": "ComplexUpset",
+      "Version": "1.3.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "colorspace",
+        "ggplot2",
+        "patchwork",
+        "scales"
+      ],
+      "Hash": "33a906b96379ddbd41dcb85f80f4fed9"
+    },
     "DSPWorkflow": {
       "Package": "DSPWorkflow",
       "Version": "1.3.1",
@@ -718,24 +731,6 @@
         "utils"
       ],
       "Hash": "d241624b79ed7bf9b43626a0717d689c"
-    },
-    "UpSetR": {
-      "Package": "UpSetR",
-      "Version": "1.4.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R",
-        "ggplot2",
-        "grDevices",
-        "gridExtra",
-        "methods",
-        "plyr",
-        "scales",
-        "stats",
-        "utils"
-      ],
-      "Hash": "f6ef89503aaff474873f8bc1823894e1"
     },
     "V8": {
       "Package": "V8",
@@ -1510,7 +1505,7 @@
     },
     "ggplot2": {
       "Package": "ggplot2",
-      "Version": "3.5.0",
+      "Version": "3.5.1",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -1531,7 +1526,7 @@
         "vctrs",
         "withr"
       ],
-      "Hash": "52ef83f93f74833007f193b2d4c159a2"
+      "Hash": "44c6a2f8202d5b7e878ea274b1092426"
     },
     "ggrepel": {
       "Package": "ggrepel",

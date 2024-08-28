@@ -25,16 +25,6 @@ initialize_object <- function(dcc.files,
         protocolDataColNames = roi.field.name,
         experimentDataColNames = panel.field.name
       )
-
-    object <-
-      readNanoStringGeoMxSet(
-        dccFiles = dcc.files,
-        pkcFiles = pkc.files,
-        phenoDataFile = annotation.file,
-        phenoDataSheet = annotation.sheet.name,
-        phenoDataDccColName = sample.id.field.name, 
-        experimentDataColNames = panel.field.name
-      )
     
     # Check the column names for required fields exist in the annotation
     
@@ -201,7 +191,423 @@ make_MA <- function(contrast.field,
   
   return(combined.MA.plots)
   
+}
+
+
+plot_distribution <- function(object, annotation.fields){
+  
+  # run reductions
+  color.variable <- Value <- Statistic <- NegProbe <- Q3 <- Annotation <- NULL
+  
+  # Start Function
+  neg.probes<- "NegProbe-WTX"
+  
+  # Set up a list of annotation fields and values
+  annotation.list <- list()
+  for(field in annotation.fields){
+    annotation.list[[field]] <- unique(pData(object)[[field]])
+  }
+  
+  count.data <- t(exprs(object))
+  
+  annotation.data <- pData(object)
+  
+  stat.data <- base::data.frame(row.names = colnames(exprs(object)),
+                                AOI = colnames(exprs(object)),
+                                Annotation = Biobase::pData(object)[, annotation.fields],
+                                Q3 = unlist(apply(exprs(object), 2,
+                                                  quantile, 0.75, na.rm = TRUE)),
+                                NegProbe = exprs(object)[neg.probes, ])
   
   
   
+  stat.data <- stat.data %>% 
+    mutate(sig2noise = Q3 / NegProbe)
+  
+  
+  stat.data.melt <- melt(stat.data, measures.vars = c("Q3", "NegProbe"),
+                      variable.name = "Statistic", value.name = "Value")
+  
+  stat.data.melt <- melt(stat.data, 
+                         measure.vars = annotation.fields, 
+                         variable.name = "field", 
+                         value.name = "annotation")
+  
+  distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
+                                               color=Annotation, 
+                                               fill=Annotation)) + 
+    geom_density(alpha=0.6) + 
+    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
+                       expand = expansion(mult = c(0, 0))) + 
+    labs(title=" Distribution per AOI of All Probes vs Negative", 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Annotation", 
+         fill = "Annotation") +
+    theme_bw()
+  
+  #stat.data.mean <- stat.data.m %>% 
+  #  mutate(group = paste0(Annotation, Statistic)) %>% 
+  #  group_by(group) %>% 
+  #  mutate(group_mean = mean(Value)) %>% 
+  #  ungroup() %>% 
+  #  select(Annotation, Statistic, group_mean) %>% 
+  #  distinct()
+  
+  distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
+                                               color=Statistic, 
+                                               fill=Statistic)) + 
+    geom_density(alpha=0.6) +
+    geom_vline(data=stat.data.mean, aes(xintercept=group_mean, color=Statistic),
+               linetype="dashed") +
+    scale_color_manual(values = c("#56B4E9", "#E69F00")) +
+    scale_fill_manual(values=c("#56B4E9", "#E69F00")) + 
+    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
+                       expand = expansion(mult = c(0, 0))) +  
+    facet_wrap(~Annotation, nrow = 1) + 
+    labs(title=" Distribution per AOI of All Probes vs Negative", 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Statistic", 
+         fill = "Statistic") +
+    theme_bw()
+  
+}  
+
+
+normalize_counts <- function(object, norm.type, facet.annotation) {
+  
+  if(class(object)[1] != "NanoStringGeoMxSet"){
+    stop(paste0("Error: You have the wrong data class, must be NanoStringGeoMxSet" ))
+  }
+  
+  # run reductions
+  color.variable <- Value <- Statistic <- NegProbe <- Q3 <- Annotation <- NULL
+  
+  # Start Function
+  neg.probes<- "NegProbe-WTX"
+  ann.of.interest <- facet.annotation
+  
+  stat.data <- base::data.frame(row.names = colnames(exprs(object)),
+                                AOI = colnames(exprs(object)),
+                                Annotation = Biobase::pData(object)[, ann.of.interest],
+                                Q3 = unlist(apply(exprs(object), 2,
+                                                  quantile, 0.75, na.rm = TRUE)),
+                                NegProbe = exprs(object)[neg.probes, ])
+  
+  stat.data.melt <- melt(stat.data, measures.vars = c("Q3", "NegProbe"),
+                      variable.name = "Statistic", value.name = "Value")
+  
+  stat.data.mean <- stat.data.melt %>% 
+    mutate(group = paste0(Annotation, Statistic)) %>% 
+    group_by(group) %>% 
+    mutate(group_mean = mean(Value)) %>% 
+    ungroup() %>% 
+    select(Annotation, Statistic, group_mean) %>% 
+    distinct()
+  
+  distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
+                                               color=Statistic, 
+                                               fill=Statistic)) + 
+    geom_density(alpha=0.6) +
+    geom_vline(data=stat.data.mean, aes(xintercept=group_mean, color=Statistic),
+               linetype="dashed") +
+    scale_color_manual(values = c("#56B4E9", "#E69F00")) +
+    scale_fill_manual(values=c("#56B4E9", "#E69F00")) + 
+    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
+                       expand = expansion(mult = c(0, 0))) +  
+    facet_wrap(~Annotation, nrow = 1) + 
+    labs(title=" Distribution per AOI of All Probes vs Negative", 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Statistic", 
+         fill = "Statistic") +
+    theme_bw()
+  
+  distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
+                                               color=Annotation, 
+                                               fill=Annotation)) + 
+    geom_density(alpha=0.6) + 
+    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
+                       expand = expansion(mult = c(0, 0))) + 
+    labs(title=" Distribution per AOI of All Probes vs Negative", 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Annotation", 
+         fill = "Annotation") +
+    theme_bw()
+  
+  #scale_x_continuous(trans = "log2") + 
+  #scale_y_continuous(trans = "log2") +
+  
+  q3.neg.plot <- ggplot(stat.data,
+                        aes(x = NegProbe, y = Q3, color = Annotation)) +
+    geom_abline(alpha = 0.5, intercept = 0, slope = 1, lty = "solid", color = "darkgray") +
+    geom_point(alpha = 0.3) + 
+    geom_smooth(method = "loess", 
+                se = FALSE, 
+                linetype = "longdash", 
+                alpha = 0.2) + 
+    theme_bw() + 
+    theme(aspect.ratio = 1) +
+    labs(title = "Q3 versus Negative Mean", 
+         x = "Negative Probe GeoMean per AOI", 
+         y = "Q3 of all Probes per AOI ") +
+    scale_x_continuous(trans = "log2") +
+    scale_y_continuous(trans = "log2")
+  
+  plt3 <- ggplot(stat.data,
+                 aes(x = NegProbe, y = Q3 / NegProbe, color = Annotation)) +
+    geom_hline(yintercept = 1, lty = "dashed", color = "darkgray") +
+    geom_point() + theme_bw() +
+    scale_x_continuous(trans = "log2") + 
+    scale_y_continuous(trans = "log2") +
+    theme(aspect.ratio = 1) +
+    labs(x = "Negative Probe GeoMean, Counts", y = "Q3/NegProbe Value, Counts")
+  
+  btm.row <- plot_grid(plt2, plt3, nrow = 1, labels = c("B", ""),
+                       rel_widths = c(0.43,0.57))
+  multi.plot <- plot_grid(plt1, btm.row, ncol = 1, labels = c("A", ""))
+  
+  if(norm == "q3"){
+    # Q3 norm (75th percentile) for WTA/CTA  with or without custom spike-ins
+    object.norm <- normalize(object,
+                        norm_method = "quant", 
+                        desiredQuantile = .75,
+                        toElt = "q_norm")
+    
+    # The raw counts boxplot
+    #transform1.raw<- exprs(object[,1:10])
+    #transform2.raw<- as.data.frame(transform1.raw)
+    #transform3.raw<- melt(transform2.raw)
+    #ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
+    #  stat_boxplot(geom = "errorbar") +
+    #  geom_boxplot(fill="#2CA02C") +
+    #  scale_y_log10() +
+    #  xlab("Segment") + 
+    #  ylab("Counts, Raw") +
+    #  ggtitle("Q3 Norm Counts") +
+    #  scale_x_discrete(labels=c(1:10))
+    
+    # The normalized counts boxplot
+    #transform1.norm<- assayDataElement(object[,1:10], elt = "q_norm")
+    #transform2.norm<- as.data.frame(transform1.norm)
+    #transform3.norm<- melt(transform2.norm)
+    #ggboxplot.norm <- ggplot(transform3.norm, aes(variable, value)) +
+    #  stat_boxplot(geom = "errorbar") +
+    #  geom_boxplot(fill="#2CA02C") +
+    #  scale_y_log10() +
+    #  xlab("Segment") + 
+    #  ylab("Counts, Q3 Normalized") +
+    #  ggtitle("Quant Norm Counts") +
+    #  scale_x_discrete(labels=c(1:10))
+  }
+  if(norm == "Q3"){
+    stop(paste0("Error: Q3 needs to be q3" ))
+  }
+  if(norm == "quantile"){
+    stop(paste0("Error: quantile needs to be q3" ))
+  }
+  if(norm == "Quantile"){
+    stop(paste0("Error: Quantile needs to be q3" ))
+  }
+  if(norm == "quant"){
+    stop(paste0("Error: quant needs to be q3" ))
+  }
+  
+  if(norm == "neg"){
+    # Background normalization for WTA/CTA without custom spike-in
+    object <- normalize(object,
+                        norm_method = "neg", 
+                        fromElt = "exprs",
+                        toElt = "neg_norm")
+    
+    # The raw counts boxplot
+    transform1.raw<- exprs(object[,1:10])
+    transform2.raw<- as.data.frame(transform1.raw)
+    transform3.raw<- melt(transform2.raw)
+    ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
+      stat_boxplot(geom = "errorbar") +
+      geom_boxplot(fill="#FF7F0E") +
+      scale_y_log10() +
+      xlab("Segment") + 
+      ylab("Counts, Raw") +
+      ggtitle("Neg Norm Counts") +
+      scale_x_discrete(labels=c(1:10))
+    
+    # The normalized counts boxplot
+    transform1.norm<- assayDataElement(object[,1:10], elt = "neg_norm")
+    transform2.norm<- as.data.frame(transform1.norm)
+    transform3.norm<- melt(transform2.norm)
+    ggboxplot.norm <- ggplot(transform3.norm, aes(variable, value)) +
+      stat_boxplot(geom = "errorbar") +
+      geom_boxplot(fill="#FF7F0E") +
+      scale_y_log10() +
+      xlab("Segment") + 
+      ylab("Counts, Neg. Normalized") +
+      ggtitle("Neg Norm Counts") +
+      scale_x_discrete(labels=c(1:10))
+  }
+  if(norm == "Neg"){
+    stop(paste0("Error: Neg needs to be neg" ))
+  }
+  if(norm == "negative"){
+    stop(paste0("Error: negative needs to be neg" ))
+  }
+  if(norm == "Negative"){
+    stop(paste0("Error: Negative needs to be neg" ))
+  }
+  
+  stat.data.norm <- base::data.frame(row.names = colnames(object.norm@assayData$q_norm),
+                                AOI = colnames(object.norm@assayData$q_norm),
+                                Annotation = Biobase::pData(object.norm)[, ann.of.interest],
+                                Q3 = unlist(apply(object.norm@assayData$q_norm, 2,
+                                                  quantile, 0.75, na.rm = TRUE)),
+                                NegProbe = object.norm@assayData$q_norm[neg.probes, ])
+  
+  stat.data.norm.m <- melt(stat.data.norm, measures.vars = c("Q3", "NegProbe"),
+                      variable.name = "Statistic", value.name = "Value")
+  
+  stat.data.norm.mean <- stat.data.norm.m %>% 
+    mutate(group = paste0(Annotation, Statistic)) %>% 
+    group_by(group) %>% 
+    mutate(group_mean = mean(Value)) %>% 
+    ungroup() %>% 
+    select(Annotation, Statistic, group_mean) %>% 
+    distinct()
+  
+  distribution.plot.norm <- ggplot(stat.data.norm.m, aes(x=Value, 
+                                               color=Statistic, 
+                                               fill=Statistic)) + 
+    geom_density(alpha=0.6) +
+    geom_vline(data=stat.data.mean, aes(xintercept=group_mean, color=Statistic),
+               linetype="dashed") +
+    scale_color_manual(values = c("#56B4E9", "#E69F00")) +
+    scale_fill_manual(values=c("#56B4E9", "#E69F00")) + 
+    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
+                       expand = expansion(mult = c(0, 0))) +  
+    facet_wrap(~Annotation, nrow = 1) + 
+    labs(title=" Distribution per AOI of All Probes vs Negative", 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Statistic", 
+         fill = "Statistic") +
+    theme_bw()
+  
+  
+  
+  multi.plot <- plot_grid(distribution.plot, 
+                          distribution.plot.norm, 
+                          ncol = 1)
+  
+  return(list("multi.plot" = multi.plot, "boxplot.raw" = ggboxplot.raw, "boxplot.norm" = ggboxplot.norm, "object" = object))
+}
+
+top_variable_heatmap <- function(log2.counts, 
+                                 top.x.genes = 500, 
+                                 annotation.column, 
+                                 annotation.row = NULL, 
+                                 anno.colors, 
+                                 cluster.rows = FALSE, 
+                                 cluster.columns = FALSE, 
+                                 main.title, 
+                                 row.gaps = NULL, 
+                                 column.gaps = NULL, 
+                                 show.rownames = FALSE, 
+                                 show.colnames = FALSE){
+  
+  # create Coefficient of Variation (CV) function and apply to the log counts
+  calc_CV <- function(x) {sd(x) / mean(x)}
+  cv.df <- data.frame(CV = apply(log2.counts, 1, calc_CV))
+  
+  # Take the top X most variable genes by CV score
+  cv.df.top <- cv.df %>% arrange(desc(CV)) %>% slice(1:top.x.genes)
+  
+  # Get the list of top CV genes
+  top.cv.gene.list <- rownames(cv.df.top)
+  
+  # Subset the counts for the top CV genes
+  top.cv.heatmap.counts <- log2.counts[rownames(log2.counts) %in% top.cv.gene.list, ]
+  
+  # Order the counts by top CV
+  top.cv.heatmap.counts <- top.cv.heatmap.counts[match(top.cv.gene.list, rownames(top.cv.heatmap.counts)), ]
+  
+  # Subset the annotation and arrange the order
+  annotation.column.fields <- names(anno.colors)
+  
+  annotation.column <- annotation %>% 
+    select(all_of(annotation.column.fields)) %>% 
+    arrange(Treatment_group) %>% 
+    arrange(control)
+  
+  annotation.row.order <- gsub("\\.dcc", "", rownames(annotation.column))
+  
+  # Order the samples in counts the same as the annotation
+  top.cv.heatmap.counts <- top.cv.heatmap.counts[, annotation.row.order]
+  
+  heatmap.plot <- pheatmap(top.cv.heatmap.counts, 
+                           main = main.title, 
+                           show_rownames = show.rownames, 
+                           scale = "row",   
+                           show_colnames = show.colnames,
+                           border_color = NA, 
+                           cluster_rows = cluster.rows, 
+                           cluster_cols = cluster.columns, 
+                           clustering_method = "average", 
+                           clustering_distance_rows = "correlation", 
+                           clustering_distance_cols = "correlation", 
+                           color = colorRampPalette(c("blue", "white", "red"))(120), 
+                           annotation_row = annotation.row, 
+                           annotation_col = annotation.column,  
+                           annotation_colors = anno.colors, 
+                           gaps_row = row.gaps, 
+                           gaps_col = column.gaps, 
+                           fontsize_row = 4)
+  
+  
+  return(heatmap.plot)
+  
+}
+
+plot_umap <- function(log.counts, 
+                      annotation, 
+                      group.field, 
+                      roi.field, 
+                      slide.field){
+  
+  # Set up the counts and order by sample ID
+  log.counts.transpose <- as.data.frame(t(log.counts))
+  log.counts.transpose <- log.counts.transpose[order(rownames(log.counts.transpose)), ]
+  
+  # Order the annotation by sample ID
+  annotation <- annotation[order(rownames(annotation)), ]
+  
+  # Run 2D UMAP and select PCs
+  umap <- umap(log.counts.transpose, 
+               n_components = 2, 
+               random_state = 15) 
+  layout <- umap[["layout"]] 
+  layout <- data.frame(layout) 
+  
+  # Merge the annotation and UMAP
+  layout$sampleID <- rownames(layout)
+  annotation$sampleID <- rownames(annotation)
+  umap.df <- merge(layout, annotation, by = "sampleID") 
+  
+  # Use the correct column names in mutate and select
+  umap.df <- umap.df %>% 
+    mutate(segmentID = paste({{ roi.field }}, {{ slide.field }}, sep = "|")) %>% 
+    select(segmentID, X1, X2, {{ group.field }})
+  
+  # Create the UMAP plot
+  umap.plot <- ggplot(umap.df, 
+                         aes(x = X1, 
+                             y = X2, 
+                             color = !!sym(group.field), 
+                             fill = !!sym(group.field))) +
+    geom_point() + 
+    geom_encircle(inherit.aes = TRUE, 
+                  alpha = 0.2)
+  
+  return(umap.plot)
 }
