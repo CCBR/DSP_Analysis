@@ -4,6 +4,7 @@ format:
   html:
     code-fold: true
 editor: visual
+#css: "qc_report_style.css"
 
 params:
   data.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
@@ -37,7 +38,7 @@ library(knitr)
 library(gt)
 library(tidyr)
 library(openxlsx)
-library(UpSetR)
+library(ComplexUpset)
 
 source("DSP_QC_functions.R")
 ```
@@ -97,13 +98,10 @@ init.object <- initialize_object(dcc.files = dcc.files,
 
 @fig-sankey shows a summary of AOIs per annotation
 
-```{r Object Summary}
+```{r Object Summary, fig.width=12, fig.height=8}
 #| label: fig-sankey
 #| fig-cap: "Sankey Plot"
 #| warning: false
-
-# Print the Sankey Plot
-#sdesign.list$sankey.plot
 
 #Rename the slide name column for formatting
 pData(init.object) <- pData(init.object) %>% 
@@ -209,9 +207,14 @@ sankey.plot <-
   )
 
 print(sankey.plot)
+```
 
+@fig-aoibarplot shows the total AOI counts per annotation
 
-# Create UpSetR plot for counts per annotation group
+```{r AOI Count Bar Plot, fig.width=12, fig.height=8}
+#| label: fig-aoibarplot
+#| fig-cap: "AOI Count Bar Plot"
+#| warning: false
 
 AOI.counts <- sankey.count.data
 
@@ -248,32 +251,58 @@ AOI.count.plot <- ggplot(AOI.counts.all, aes(x = annotation, y = AOI_sum)) +
   facet_wrap(~ type, ncol = 2, scales = "free_x") + 
   theme(axis.text.x = element_text(angle = 30, hjust = 1)) + 
   geom_text(aes(label = AOI_sum), vjust = -0.3, size = 3.5) +
-  labs(x = NULL, y = "AOI Count")
+  labs(x = NULL, y = "AOI Count") + 
+  ylim(0, max(AOI.counts.all$AOI_sum) + 30)
 
 print(AOI.count.plot)
 
-AOI.inter.counts  <-  sankey.count.data %>% 
-  select(all_of(c(lanes, "n")))
+```
 
-AOI.inter.counts <- AOI.inter.counts %>%
-  unite("annotation", slide, class, region, segment, sep = "&", remove = FALSE)
+@fig-upsetr shows the size of annotation groups
 
-# Sum the counts by unique combinations
-combined.AOI.inter.counts <- AOI.inter.counts %>%
-  group_by(annotation) %>%
-  summarize(total_n = sum(n)) %>%
-  ungroup()
+```{r UpsetR Plot, fig.width=12, fig.height=8}
+#| label: fig-upsetr
+#| fig-cap: "UpSetR Plot"
+#| warning: false
 
-# Create the named vector
-expression.input <- setNames(combined.AOI.inter.counts$total_n, 
-                            combined.AOI.inter.counts$annotation)
-                            
-        
+# Vector of all values for upsetr plot
+all.lane.values <- c()
 
-AOI.inter.count.plot <- upset(fromExpression(expression.input),  
-                        nsets = 20, 
-                        number.angles = 60, 
-                        order.by = "freq")
+# Gather all of the values for the upsetr plot
+for(lane in lanes){ 
+  
+  lane.values <- unique(pData(init.object)[[lane]])
+  
+  all.lane.values <- c(all.lane.values, lane.values)
+  
+}
+
+# Create the upset df with all FALSE values
+upset.df <- as.data.frame(matrix(FALSE, nrow = nrow(pData(init.object)), ncol = length(all.lane.values)))
+
+# Rename the columns to be all possible values for the upsetr plot
+colnames(upset.df) <- all.lane.values
+
+# Subset the annotation for only the relevant columns for upsetr
+anno.subset <- pData(init.object) %>% select(all_of(lanes))
+
+# For each row in the annotation data, if it contains the value of a column in the upsetr plot mark as TRUE
+for (i in 1:nrow(anno.subset)) {
+  row_values <- as.character(unlist(anno.subset[i, ]))
+  upset.df[i, row_values] <- TRUE
+}
+
+# Create the UpSetR Plot
+AOI.inter.count.plot <- upset(upset.df,  
+                              intersect = all.lane.values, 
+                              width_ratio = 0.4, 
+                              min_size = 4, 
+                              set_sizes=(upset_set_size() + 
+                                           geom_text(aes(label=..count..),
+                                                     hjust=1.1, stat='count') +
+                                           expand_limits(y=nrow(upset.df)) +
+                                           theme(axis.text.x=element_text(angle=90))))
+
 
 print(AOI.inter.count.plot)
 
@@ -709,7 +738,7 @@ neg.normalization.output <- geomxNorm(
 
 @fig-Q3vsBackground shows the quartile-3 (Q3) normalization counts compared to negative probes
 
-```{r Mulit-Plot for Q3 Normalization}
+```{r Mulit-Plot for Q3 Normalization, fig.width=12, fig.height=8}
 #| label: fig-Q3vsBackground
 #| fig-cap: "Q3 Normalized Counts versus Background"
 #| warning: false
@@ -721,7 +750,7 @@ q3.normalization.output$multi.plot
 
 @fig-NegvsBackground shows the negative normalization counts compared to negative probes
 
-```{r Mulit-Plot for Neg Normalization}
+```{r Mulit-Plot for Neg Normalization, fig.width=12, fig.height=8}
 #| label: fig-NegvsBackground
 #| fig-cap: "Negative Normalized Counts versus Background"
 #| warning: false
@@ -816,7 +845,7 @@ neg.pca.table <- pca(neg.log.counts.df,
 
 #### PCA by Segment
 
-```{r PCA for Q3 segment}
+```{r PCA for Q3 segment, fig.width=12, fig.height=8}
 #| label: fig-PCAsegmentQ3
 #| fig-cap: "PCA colored by Segment for Q3 Normalization"
 #| warning: false
@@ -834,7 +863,7 @@ print(q3.pca.plot.segment)
 
 ```
 
-```{r PCA for Negative segment}
+```{r PCA for Negative segment, fig.width=12, fig.height=8}
 #| label: fig-PCAsegmentNeg
 #| fig-cap: "PCA colored by Segment for Negative Normalization"
 #| warning: false
@@ -854,7 +883,7 @@ print(neg.pca.plot.segment)
 
 #### PCA by Region
 
-```{r PCA for Q3 region}
+```{r PCA for Q3 region, fig.width=12, fig.height=8}
 #| label: fig-PCAregionQ3
 #| fig-cap: "PCA colored by Region for Q3 Normalization"
 #| warning: false
@@ -873,7 +902,7 @@ print(q3.pca.plot.region)
 
 ```
 
-```{r PCA for Neg region}
+```{r PCA for Neg region, fig.width=12, fig.height=8}
 #| label: fig-PCAregionNeg
 #| fig-cap: "PCA colored by Region for Negative Normalization"
 #| warning: false
@@ -893,7 +922,7 @@ print(neg.pca.plot.region)
 
 #### PCA by Class
 
-```{r PCA for Q3 class}
+```{r PCA for Q3 class, fig.width=12, fig.height=8}
 #| label: fig-PCAclassQ3
 #| fig-cap: "PCA colored by Class for Q3 Normalization"
 #| warning: false
@@ -911,7 +940,7 @@ print(q3.pca.plot.class)
 
 ```
 
-```{r PCA for Negative class}
+```{r PCA for Negative class, fig.width=12, fig.height=8}
 #| label: fig-PCAclassNeg
 #| fig-cap: "PCA colored by Class for Negative Normalization"
 #| warning: false
@@ -931,7 +960,7 @@ print(neg.pca.plot.class)
 
 #### PCA by Slide
 
-```{r PCA for Q3 slide}
+```{r PCA for Q3 slide, fig.width=12, fig.height=8}
 #| label: fig-PCAslideQ3
 #| fig-cap: "PCA colored by Slide for Q3 Normalization"
 #| warning: false
@@ -950,7 +979,7 @@ print(q3.pca.plot.slide)
 
 ```
 
-```{r PCA for Neg slide}
+```{r PCA for Neg slide, fig.width=12, fig.height=8}
 #| label: fig-PCAslideNeg
 #| fig-cap: "PCA colored by Slide for Negative Normalization"
 #| warning: false
@@ -1007,7 +1036,7 @@ annotation.MA <- annotation
 
 #### Q3 Normalization
 
-```{r MA Plot Q3, message=FALSE, warning=FALSE}
+```{r MA Plot Q3, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 # MA plots for two annotation groups to evaluate negative normalization
 log.counts <- post.q3norm.counts
 
@@ -1026,7 +1055,7 @@ grid.draw(MA.plots.q3)
 
 grid.draw(MA.plots.neg)
 
-```{r MA Plot Neg, message=FALSE, warning=FALSE}
+```{r MA Plot Neg, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 
 # MA plots for two annotation groups to evaluate negative normalization
 log.counts <- post.negnorm.counts
