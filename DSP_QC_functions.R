@@ -611,3 +611,102 @@ plot_umap <- function(log.counts,
   
   return(umap.plot)
 }
+
+gene_detect_plot <- function(object, 
+                             facet.column = NULL, 
+                             loq.mat = NULL){
+  
+  # Create the plot for the all genes
+  gene.stacked.bar.plot.total <- ggplot(fData(object),
+                                        aes(x = DetectionThreshold)) +
+    geom_bar(aes(fill = Module)) +
+    geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
+    theme_bw() +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+    labs(x = "Gene Detection Rate (Detected AOIs/Total AOIs)",
+         y = "Genes, #",
+         fill = "Probe Set")
+  
+  
+  # If a facet has been selected also make a faceted bar plot
+  if(!is.null(facet.column)) {
+    
+    # Gather the facet annotation information
+    annotation.data <- pData(object)
+    facet.values <- unique(annotation.data[[facet.column]])
+    
+    # A master df to hold all feature (gene) detection for facet values
+    feature.detect.facet.df <- data.frame(feature = rownames(fData(object)))
+    
+    
+    # Gather the IDs for each facet value
+    for(value in facet.values){
+      
+      # Gather the sample IDs for only the current facet value
+      value.df <- annotation.data %>% 
+        filter(!!sym(facet.column) == value)
+      
+      value.IDs <- rownames(value.df)
+      
+      total.AOIs <- length(value.IDs)
+      
+      # Gather the detection per gene for value Sample IDs
+      loq.mat.value <- loq.mat[, value.IDs]
+      
+      # Compute the detection for each feature
+      value.feature.df <- data.frame(feature = rownames(fData(object)))
+      
+      value.feature.df[[value]] <- 100*(rowSums(loq.mat.value, na.rm = TRUE)/total.AOIs)
+      
+      # Add the detection per feature for this value to the master df
+      feature.detect.facet.df <- merge(feature.detect.facet.df, 
+                                       value.feature.df, 
+                                       by = "feature")
+    }
+    
+    # Melt the feature detect facet df for easier ggplot faceting
+    
+    facet.df.melt <- feature.detect.facet.df %>% 
+      pivot_longer(cols = -feature, 
+                   names_to = "class", 
+                   values_to = "detection")
+    
+    # Create bins for the boxplot
+    detection.bins <- c("0", 
+                        "<1", 
+                        "1-5", 
+                        "5-10", 
+                        "10-20", 
+                        "20-30", 
+                        "30-40", 
+                        "40-50", 
+                        ">50")
+    
+    # Determine detection thresholds: 1%, 5%, 10%, 15%, >15%
+    facet.df.melt$detection_bin <- 
+      cut(facet.df.melt$detection,
+          breaks = c(-1, 0, 1, 5, 10, 20, 30, 40, 50, 100),
+          labels = detection.bins)
+    
+    facet.table <- table(facet.df.melt$detection_bin,
+                         facet.df.melt$class)
+    
+    max.count.facet <- max(facet.table)
+    
+    gene.stacked.bar.plot.facet <- ggplot(facet.df.melt,
+                                          aes(x = detection_bin, 
+                                              fill = class)) +
+      geom_bar(position = "dodge") +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.1)), 
+                         breaks = seq(0, max(max.count.facet), by = 500)) +
+      labs(x = "Gene Detection Rate (Detected AOIs/Total AOIs)",
+           y = "Number of Genes") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+  }
+  
+  
+  return(list("total.plot" = gene.stacked.bar.plot.total, 
+                 "facet.plot" = gene.stacked.bar.plot.facet, 
+                 "facet.table" = facet.table))
+}
