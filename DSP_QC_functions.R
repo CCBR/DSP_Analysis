@@ -21,8 +21,7 @@ initialize_object <- function(dcc.files,
         pkcFiles = pkc.files,
         phenoDataFile = annotation.file,
         phenoDataSheet = annotation.sheet.name,
-        phenoDataDccColName = sample.id.field.name,
-        protocolDataColNames = roi.field.name,
+        phenoDataDccColName = sample.id.field.name, 
         experimentDataColNames = panel.field.name
       )
     
@@ -365,7 +364,7 @@ normalize_counts <- function(object, norm.type, facet.annotation) {
     theme(aspect.ratio = 1) +
     labs(x = "Negative Probe GeoMean, Counts", y = "Q3/NegProbe Value, Counts")
   
-  btm.row <- plot_grid(plt2, plt3, nrow = 1, labels = c("B", ""),
+  btm.row <- plot_grid(q3.neg.plot, plt3, nrow = 1, labels = c("B", ""),
                        rel_widths = c(0.43,0.57))
   multi.plot <- plot_grid(plt1, btm.row, ncol = 1, labels = c("A", ""))
   
@@ -534,11 +533,6 @@ top_variable_heatmap <- function(log2.counts,
   
   # Subset the annotation and arrange the order
   annotation.column.fields <- names(anno.colors)
-  
-  annotation.column <- annotation %>% 
-    select(all_of(annotation.column.fields)) %>% 
-    arrange(Treatment_group) %>% 
-    arrange(control)
   
   annotation.row.order <- gsub("\\.dcc", "", rownames(annotation.column))
   

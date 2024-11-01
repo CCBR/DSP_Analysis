@@ -3,9 +3,46 @@
 # Required libraries for functions
 library(pheatmap)
 
+subset_counts_for_lmm <- function(counts, 
+                                   annotation, 
+                                   subset.list){ 
+  
+  subset.counts <- counts
+  subset.annotation <- annotation
+  
+  # Subset the object based on the given annotations
+  for(column in names(subset.list)){ 
+    
+    subset.annotation <- subset.annotation %>% 
+      filter(.[[column]] %in% subset.list[[column]])
+    
+    subset.IDs <- subset.annotation$Sample_ID
+    
+    subset.columns <- c("gene", subset.IDs)
+    
+    subset.counts <- subset.counts %>% 
+      select(all_of(subset.columns))
+    
+    # Factor the columns with relevant annotations
+    subset.annotation[[column]] <- factor(subset.annotation[[column]])
+    
+  }
+  
+  # Factor the slide column
+  subset.annotation[["slide_name"]] <- factor(subset.annotation[["slide_name"]])
+  
+  # Create log2 counts
+  subset.counts.log2 <-  subset.counts %>%
+    mutate(across(where(is.numeric), log2))
+  
+  return(list("subset.counts" = subset.counts, 
+              "subset.log.counts" = subset.counts.log2, 
+              "subset.annotation" = subset.annotation))
+  
+}
 
-subset_for_lmm <- function(object, 
-                           subset.list){ 
+subset_object_for_lmm <- function(object, 
+                                  subset.list){ 
   
   # Set up the object to subset
   subset.object <- object
@@ -343,7 +380,10 @@ run_GSEA <- function(){
 
 make_heatmap <- function(normalized.log.counts.df, 
                          de.results, 
-                         top.degs, 
+                         top.degs = FALSE, 
+                         top.variable = FALSE, 
+                         logfc.column = NULL, 
+                         logfc.cutoff = NULL, 
                          annotation.column, 
                          annotation.row = NULL, 
                          anno.colors, 
@@ -356,6 +396,19 @@ make_heatmap <- function(normalized.log.counts.df,
                          show.colnames = FALSE){
   
   
+  
+  if(top.degs == TRUE & top.variable == TRUE){ 
+  
+    stop("Set only one of top.degs or top.variable to TRUE, not both")  
+    
+  }
+  
+  if (top.variable == TRUE){
+    
+    
+    
+  }
+  
   # Filter genes by top DEGs, if applicable
   if(top.degs == TRUE){ 
     
@@ -364,13 +417,31 @@ make_heatmap <- function(normalized.log.counts.df,
       filter(padj < 0.05) %>% 
       arrange(desc(padj))
     
+    # Arrange by log FC
+    degs.df <- degs.df %>% arrange(desc(logfc))
+    
+    if(!is.null(logfc.cutoff)){
+      
+      degs.df <- degs.df %>% 
+        filter(.data[[logfc.column]] > logfc.cutoff | .data[[logfc.column]] < -(logfc.cutoff))
+      
+    }
+    
+    # Revert to only p-value correction if no DEGs with logFC cutoff
+    if(length(rownames(degs.df)) < 2){
+      
+      degs.df <- de.results %>% 
+        filter(padj < 0.05) %>% 
+        arrange(desc(padj))
+      
+      print("Not enough DEGs with listed logFC cutoff, reverting to all DEGs with adj p-value < 0.05")
+      
+    }
+    
     # If there are more then 500 DEGs, trim down to top 500
     if(length(rownames(degs.df)) > 500){
       degs.df <- degs.df %>% slice(1:500)
     }
-    
-    # Arrange by log FC
-    degs.df <- degs.df %>% arrange(desc(logfc))
     
     # Grab the list of DEGs
     degs.list <- degs.df$gene
@@ -405,12 +476,241 @@ make_heatmap <- function(normalized.log.counts.df,
                            fontsize_row = 4)
   
   
+  
   return(heatmap.plot)
   
 }
 
 
 calculate_signal2noise <- function(){
+  
+  
+}
+
+
+normalize_counts <- function(object, norm.type, facet.annotation) {
+  
+  if(class(object)[1] != "NanoStringGeoMxSet"){
+    stop(paste0("Error: You have the wrong data class, must be NanoStringGeoMxSet" ))
+  }
+  
+  # run reductions
+  color.variable <- Value <- Statistic <- NegProbe <- Q3 <- Annotation <- NULL
+  
+  # Start Function
+  neg.probes<- "NegProbe-WTX"
+  ann.of.interest <- facet.annotation
+  
+  stat.data <- base::data.frame(row.names = colnames(exprs(object)),
+                                AOI = colnames(exprs(object)),
+                                Annotation = Biobase::pData(object)[, ann.of.interest],
+                                Q3 = unlist(apply(exprs(object), 2,
+                                                  quantile, 0.75, na.rm = TRUE)),
+                                NegProbe = exprs(object)[neg.probes, ])
+  
+  stat.data.m <- melt(stat.data, measures.vars = c("Q3", "NegProbe"),
+                      variable.name = "Statistic", value.name = "Value")
+  
+  stat.data.mean <- stat.data.m %>% 
+    mutate(group = paste0(Annotation, Statistic)) %>% 
+    group_by(group) %>% 
+    mutate(group_mean = mean(Value)) %>% 
+    ungroup() %>% 
+    select(Annotation, Statistic, group_mean) %>% 
+    distinct()
+  
+  distribution.plot <- ggplot(stat.data.m, aes(x=Value, 
+                                               color=Statistic, 
+                                               fill=Statistic)) + 
+    geom_density(alpha=0.6) +
+    geom_vline(data=stat.data.mean, aes(xintercept=group_mean, color=Statistic),
+               linetype="dashed") +
+    scale_color_manual(values = c("#56B4E9", "#E69F00")) +
+    scale_fill_manual(values=c("#56B4E9", "#E69F00")) + 
+    scale_x_continuous(limits = c(0, max(stat.data.m$Value) + 10), 
+                       expand = expansion(mult = c(0, 0))) +  
+    facet_wrap(~Annotation, nrow = 1) + 
+    labs(title=" Distribution per AOI of All Probes vs Negative", 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Statistic", 
+         fill = "Statistic") +
+    theme_bw()
+  
+  #scale_x_continuous(trans = "log2") + 
+  #scale_y_continuous(trans = "log2") +
+  
+  q3.neg.plot <- ggplot(stat.data,
+                 aes(x = NegProbe, y = Q3, color = Annotation)) +
+    geom_abline(alpha = 0.5, intercept = 0, slope = 1, lty = "dashed", color = "darkgray") +
+    geom_point(alpha = 0.5) + 
+    geom_smooth(method = "loess", 
+                se = FALSE, 
+                linetype = "dashed", 
+                alpha = 0.5) + 
+    theme_bw() + 
+    theme(aspect.ratio = 1) +
+    labs(title = "Q3 versus Negative Mean", 
+         x = "Negative Probe GeoMean per AOI", 
+         y = "Q3 of all Probes per AOI ") +
+    scale_x_continuous(trans = "log2") +
+    scale_y_continuous(trans = "log2")
+  
+  plt3 <- ggplot(stat.data,
+                 aes(x = NegProbe, y = Q3 / NegProbe, color = Annotation)) +
+    geom_hline(yintercept = 1, lty = "dashed", color = "darkgray") +
+    geom_point() + theme_bw() +
+    scale_x_continuous(trans = "log2") + 
+    scale_y_continuous(trans = "log2") +
+    theme(aspect.ratio = 1) +
+    labs(x = "Negative Probe GeoMean, Counts", y = "Q3/NegProbe Value, Counts")
+  
+  btm.row <- plot_grid(plt2, plt3, nrow = 1, labels = c("B", ""),
+                       rel_widths = c(0.43,0.57))
+  multi.plot <- plot_grid(plt1, btm.row, ncol = 1, labels = c("A", ""))
+  
+  if(norm == "q3"){
+    # Q3 norm (75th percentile) for WTA/CTA  with or without custom spike-ins
+    object <- normalize(object,
+                        norm_method = "quant", 
+                        desiredQuantile = .75,
+                        toElt = "q_norm")
+    
+    # The raw counts boxplot
+    transform1.raw<- exprs(object[,1:10])
+    transform2.raw<- as.data.frame(transform1.raw)
+    transform3.raw<- melt(transform2.raw)
+    ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
+      stat_boxplot(geom = "errorbar") +
+      geom_boxplot(fill="#2CA02C") +
+      scale_y_log10() +
+      xlab("Segment") + 
+      ylab("Counts, Raw") +
+      ggtitle("Q3 Norm Counts") +
+      scale_x_discrete(labels=c(1:10))
+    
+    # The normalized counts boxplot
+    transform1.norm<- assayDataElement(object[,1:10], elt = "q_norm")
+    transform2.norm<- as.data.frame(transform1.norm)
+    transform3.norm<- melt(transform2.norm)
+    ggboxplot.norm <- ggplot(transform3.norm, aes(variable, value)) +
+      stat_boxplot(geom = "errorbar") +
+      geom_boxplot(fill="#2CA02C") +
+      scale_y_log10() +
+      xlab("Segment") + 
+      ylab("Counts, Q3 Normalized") +
+      ggtitle("Quant Norm Counts") +
+      scale_x_discrete(labels=c(1:10))
+  }
+  if(norm == "Q3"){
+    stop(paste0("Error: Q3 needs to be q3" ))
+  }
+  if(norm == "quantile"){
+    stop(paste0("Error: quantile needs to be q3" ))
+  }
+  if(norm == "Quantile"){
+    stop(paste0("Error: Quantile needs to be q3" ))
+  }
+  if(norm == "quant"){
+    stop(paste0("Error: quant needs to be q3" ))
+  }
+  
+  if(norm == "neg"){
+    # Background normalization for WTA/CTA without custom spike-in
+    object <- normalize(object,
+                        norm_method = "neg", 
+                        fromElt = "exprs",
+                        toElt = "neg_norm")
+    
+    # The raw counts boxplot
+    transform1.raw<- exprs(object[,1:10])
+    transform2.raw<- as.data.frame(transform1.raw)
+    transform3.raw<- melt(transform2.raw)
+    ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
+      stat_boxplot(geom = "errorbar") +
+      geom_boxplot(fill="#FF7F0E") +
+      scale_y_log10() +
+      xlab("Segment") + 
+      ylab("Counts, Raw") +
+      ggtitle("Neg Norm Counts") +
+      scale_x_discrete(labels=c(1:10))
+    
+    # The normalized counts boxplot
+    transform1.norm<- assayDataElement(object[,1:10], elt = "neg_norm")
+    transform2.norm<- as.data.frame(transform1.norm)
+    transform3.norm<- melt(transform2.norm)
+    ggboxplot.norm <- ggplot(transform3.norm, aes(variable, value)) +
+      stat_boxplot(geom = "errorbar") +
+      geom_boxplot(fill="#FF7F0E") +
+      scale_y_log10() +
+      xlab("Segment") + 
+      ylab("Counts, Neg. Normalized") +
+      ggtitle("Neg Norm Counts") +
+      scale_x_discrete(labels=c(1:10))
+  }
+  if(norm == "Neg"){
+    stop(paste0("Error: Neg needs to be neg" ))
+  }
+  if(norm == "negative"){
+    stop(paste0("Error: negative needs to be neg" ))
+  }
+  if(norm == "Negative"){
+    stop(paste0("Error: Negative needs to be neg" ))
+  }
+  
+  return(list("multi.plot" = multi.plot, "boxplot.raw" = ggboxplot.raw, "boxplot.norm" = ggboxplot.norm, "object" = object))
+}
+
+gsea_preranked_list <- function(contrast.field, 
+                                contrast.levels, 
+                                annotation, 
+                                log.counts){
+  
+  # Gather the signal to noise ratio for GSEA ranking
+  # Default method for ranking genes from GSEA manual:
+  # https://www.gsea-msigdb.org/gsea/doc/GSEAUserGuideTEXT.htm#_Metrics_for_Ranking
+  
+  # Contrast level A is the "condition" (positive when calculating fold change)
+  contrast.A.annotation <- annotation %>% 
+    filter(!!sym(contrast.field) == contrast.levels[1])
+  
+  contrast.A.sampleIDs <- rownames(contrast.A.annotation)
+  
+  contrast.A.counts <- as.data.frame(log.counts) %>% 
+    select(all_of(contrast.A.sampleIDs))
+  
+  contrast.A.counts$gene <- rownames(contrast.A.counts)
+  
+  # Contrast level B is the "reference" (negative when calculating fold change)
+  
+  contrast.B.annotation <- annotation %>% 
+    filter(!!sym(contrast.field) == contrast.levels[2])
+  
+  contrast.B.sampleIDs <- rownames(contrast.B.annotation)
+  
+  contrast.B.counts <- as.data.frame(log.counts) %>% 
+    select(all_of(contrast.B.sampleIDs))
+  
+  contrast.B.counts$gene <- rownames(contrast.B.counts)
+  
+  # Add a column to each contrast level for the mean and standard deviation
+  contrast.A.counts <- contrast.A.counts %>% 
+    mutate(mean.A = rowMeans(select_if(., is.numeric))) %>%  
+    mutate(stdev.A = apply(select_if(., is.numeric), 1, sd))
+  
+  contrast.B.counts <- contrast.B.counts %>% 
+    mutate(mean.B = rowMeans(select_if(., is.numeric))) %>%  
+    mutate(stdev.B = apply(select_if(., is.numeric), 1, sd))
+  
+  GSEA.preanked.df <- merge(contrast.A.counts, contrast.B.counts, by = "gene")
+  
+  GSEA.preanked.df <- GSEA.preanked.df %>% 
+    mutate(signal2noise = (mean.A - mean.B)/(stdev.A + stdev.B)) %>% 
+    arrange(desc(signal2noise)) %>% 
+    select(c(gene, mean.A, mean.B, stdev.A, stdev.B, signal2noise))
+  
+  return(GSEA.preanked.df)
+  
   
   
 }
