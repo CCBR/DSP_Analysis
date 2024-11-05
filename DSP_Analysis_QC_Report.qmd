@@ -1,5 +1,5 @@
 ---
-title: "DSP Analysis QC Report"
+title: "DSP Analysis QC Report Template"
 format:
   html:
     code-fold: true
@@ -7,9 +7,9 @@ editor: visual
 #css: "qc_report_style.css"
 
 params:
-  data.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
-  results.folder: "/Users/cauleyes/CPTR/CPTR-5 Krug_Ramaswami/CPTR_5_DSP_Krug/"
-  run.folder: "7_10_2024/"
+  data.folder: "$path_to_folder"
+  results.folder: "$path_to_folder"
+  run.folder: "$path_to_folder"
 ---
 
 ## Load Libraries
@@ -30,7 +30,7 @@ library(ggrepel)
 library(ggforce)
 library(shadowtext)
 library(stringr)
-library(PCAtools)
+library(PCAtools)s
 library(readxl)
 library(gridExtra)
 library(grid)
@@ -39,6 +39,8 @@ library(gt)
 library(tidyr)
 library(openxlsx)
 library(ComplexUpset)
+library(reshape2)
+library(cowplot)
 
 source("DSP_QC_functions.R")
 ```
@@ -52,7 +54,7 @@ source("DSP_QC_functions.R")
 pkc.file.name <- "Hs_R_NGS_WTA_v1.0.pkc"
 pkc.file.path <- paste0(params$data.folder, pkc.file.name)
 
-annotation.file.name <- "annotation_Krug_CPTR_5_april2024_NC_edit.xlsx"
+annotation.file.name <- "$annotation.file.xlsx"
 annotation.file.path <- paste0(params$data.folder, annotation.file.name)
 
 dcc.files <- list.files(file.path(paste0(params$data.folder, "dcc")),
@@ -719,6 +721,122 @@ writeData(qc.info.output, sheet = "Gene Detection Rate", gene.detection.summary)
 saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
 ```
 
+#### Q3 versus Negative Background
+
+```{r Visualize Density of Q3 Scores versus Negative Background, warning=FALSE, message=FALSE}
+#| label: fig-densityQ3vsBackground
+#| fig-cap: "Density of Q3 Normalized Counts versus Background"
+#| warning: false
+
+# Object to use for counts
+object <- object.gene.filtered
+
+# Annotation to use in the plots
+facet.annotation <- "region"
+
+# Set up variables for computing stat data
+color.variable <- Value <- Statistic <- NegProbe <- Q3 <- Annotation <- NULL
+neg.probes<- "NegProbe-WTX"
+
+# Compute the stat data
+stat.data <- base::data.frame(row.names = colnames(exprs(object)),
+                                AOI = colnames(exprs(object)),
+                                Annotation = Biobase::pData(object)[, facet.annotation],
+                                Q3 = unlist(apply(exprs(object), 2,
+                                                  quantile, 0.75, na.rm = TRUE)),
+                                NegProbe = exprs(object)[neg.probes, ])
+  
+# Melt stat data for easier plotting
+stat.data.melt <- melt(stat.data, measures.vars = c("Q3", "NegProbe"),
+                      variable.name = "Statistic", value.name = "Value")
+
+
+# Compute means for each annnotation group and negative background
+stat.data.mean <- stat.data.melt %>% 
+    mutate(group = paste0(Annotation, Statistic)) %>% 
+    group_by(group) %>% 
+    mutate(group_mean = mean(Value)) %>% 
+    ungroup() %>% 
+    select(Annotation, Statistic, group_mean) %>% 
+    distinct()
+
+# Plot with annotation groups separated
+distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
+                                               color=Statistic, 
+                                               fill=Statistic)) + 
+    geom_density(alpha=0.6) +
+    geom_vline(data=stat.data.mean, aes(xintercept=group_mean, color=Statistic),
+               linetype="dashed") +
+    scale_color_manual(values = c("#56B4E9", "#E69F00")) +
+    scale_fill_manual(values=c("#56B4E9", "#E69F00")) + 
+    scale_x_continuous(trans = "log2") +  
+    facet_wrap(~Annotation, nrow = 1) + 
+    labs(title=paste0("Density of AOI counts Q3 vs Negative by ", facet.annotation), 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Statistic", 
+         fill = "Statistic") +
+    theme_bw()
+
+# Plot overlapping density
+distribution.plot.overlap <- ggplot(stat.data.melt, aes(x=Value, 
+                                               color=Annotation, 
+                                               fill=Annotation)) + 
+    geom_density(alpha=0.2) + 
+    scale_x_continuous(trans = "log2") + 
+    labs(title=paste0("Density of AOI counts Q3 by ", facet.annotation), 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Annotation", 
+         fill = "Annotation") +
+    theme_bw()
+
+# Combine plots into a single output
+distr.plots <- plot_grid(distribution.plot, 
+                          distribution.plot.overlap, 
+                          ncol = 1)
+
+print(distr.plots)
+
+q3.neg.slope.plot <- ggplot(stat.data, 
+               aes(x = NegProbe, y = Q3, color = Annotation)) + 
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              lty = "dashed", 
+              color = "darkgray") + 
+  geom_point() + guides(color = "none") + 
+  theme_bw() + 
+  scale_x_continuous(trans = "log2") + 
+  scale_y_continuous(trans = "log2") + 
+  theme(aspect.ratio = 1) + 
+  labs(x = "Negative Probe GeoMean, Counts", y = "Q3 Value, Counts")
+
+print(q3.neg.slope.plot)
+
+q3.neg.ratio.plot <- ggplot(stat.data, 
+                            aes(x = NegProbe, 
+                                y = Q3/NegProbe, 
+                                color = Annotation)) + 
+  geom_hline(yintercept = 1, 
+             lty = "dashed", 
+             color = "darkgray") + 
+  geom_point() + 
+  theme_bw() + 
+  scale_x_continuous(trans = "log2") + 
+  scale_y_continuous(trans = "log2") + 
+  theme(aspect.ratio = 1) + 
+  labs(x = "Negative Probe GeoMean, Counts", y = "Q3/NegProbe Value, Counts")
+
+print(q3.neg.ratio.plot)
+
+stat.data <- stat.data %>% 
+  mutate(q3_neg_ratio = Q3/NegProbe) %>% 
+  mutate(low_ratio_flag = ifelse(q3_neg_ratio < 1.1, 
+                                 "TRUE", 
+                                 "FALSE"))
+
+```
+
 ### Normalization
 
 ```{r Normalization, warning=FALSE, message=FALSE}
@@ -732,62 +850,69 @@ neg.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
     
+
+export.norm.object <- FALSE 
+if(export.norm.object == TRUE){
+  
+  object <- q3.normalization.object
+  
+  save(object, file = paste0(params$results.folder, params$run.folder, "$normalized.object.RDA"))
+  
+}   
 ```
 
-#### Normalized Reads vs. Negative Background
+#### **Example AOIs**
 
-@fig-Q3vsBackground shows the quartile-3 (Q3) normalization counts compared to negative probes
-
-```{r Mulit-Plot for Q3 Normalization, fig.width=12, fig.height=8}
-#| label: fig-Q3vsBackground
-#| fig-cap: "Q3 Normalized Counts versus Background"
+```{r Normalization Effects on Counts, fig.width=12, fig.height=8}
+#| label: fig-NormEffects
+#| fig-cap: "Normalization Effects on Counts"
 #| warning: false
+#| message: false
 
-q3.normalization.output$multi.plot
+# The raw counts boxplot
+transform1.raw<- exprs(q3.normalization.object[,1:30])
+transform2.raw<- as.data.frame(transform1.raw)
+transform3.raw<- melt(transform2.raw)
+ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(fill="grey") +
+  scale_y_log10() +
+  xlab("Example AOIs") + 
+  ylab("Counts, Raw") +
+  ggtitle("Neg Norm Counts") +
+  scale_x_discrete(labels=c(1:30))
+
+# The Q3 normalized counts boxplot
+transform1.norm<- assayDataElement(q3.normalization.object[,1:30], elt = "q_norm")
+transform2.norm<- as.data.frame(transform1.norm)
+transform3.norm<- melt(transform2.norm)
+ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(fill="cadetblue2") +
+  scale_y_log10() +
+  xlab("Example AOIs") + 
+  ylab("Counts, Q3 Normalized") +
+  ggtitle("Q3 Norm Counts") +
+  scale_x_discrete(labels=c(1:30))
+
+# The Negative normalized counts boxplot
+transform1.norm<- assayDataElement(neg.normalization.object[,1:30], elt = "neg_norm")
+transform2.norm<- as.data.frame(transform1.norm)
+transform3.norm<- melt(transform2.norm)
+ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(fill="indianred") +
+  scale_y_log10() +
+  xlab("Example AOIs") + 
+  ylab("Counts, Neg. Normalized") +
+  ggtitle("Neg Norm Counts") +
+  scale_x_discrete(labels=c(1:30))
+
+print(ggboxplot.raw)
+print(ggboxplot.q3norm)
+print(ggboxplot.negnorm)
 
 
-```
-
-@fig-NegvsBackground shows the negative normalization counts compared to negative probes
-
-```{r Mulit-Plot for Neg Normalization, fig.width=12, fig.height=8}
-#| label: fig-NegvsBackground
-#| fig-cap: "Negative Normalized Counts versus Background"
-#| warning: false
-
-neg.normalization.output$multi.plot
-```
-
-**Example AOIs**
-
-@fig-RawReadBoxPlots shows the raw read count boxplots for an example 10 AOIs
-
-```{r Raw reads boxplots}
-#| label: fig-RawReadBoxPlots
-#| fig-cap: "Raw Counts for an Example 10 AOIs "
-#| warning: false
-
-q3.normalization.output$boxplot.raw
-```
-
-@fig-Q3NormBoxPlots shows the Q3 normalized read count boxplots for an example 10 AOIs
-
-```{r Q3 norm boxplots}
-#| label: fig-Q3NormBoxPlots
-#| fig-cap: "Q3 Normalized Counts for an Example 10 AOIs "
-#| warning: false
-
-q3.normalization.output$boxplot.norm
-```
-
-@fig-NegNormBoxPlots shows the negative normalized read count boxplots for an example 10 AOIs
-
-```{r Neg norm boxplots}
-#| label: fig-NegNormBoxPlots
-#| fig-cap: "Negative Normalized Counts for an Example 10 AOIs "
-#| warning: false
-
-neg.normalization.output$boxplot.norm
 ```
 
 #### Principal Component Analysis (PCA)
@@ -1010,26 +1135,17 @@ post.q3norm.counts <- log(as.data.frame(q3.normalization.output$object@assayData
 post.negnorm.counts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
 
 # Setup annotation groups for the ratio "M" (log A - log B)
-tumor.types <- c("Biopsy")
-region.types <- c("tumor", "vessel")
-source.types <- c("Skin")
-segment.types <- c("full_ROI")
+region.types <- c("region_A", "region_B")
 
 # Define the name of the contrast
-contrast.name <- paste0(tumor.types[[1]], 
-                        "_",
-                        source.types[[1]], 
-                        "_", 
-                        segment.types[[1]], 
-                        "_", 
-                        region.types[[1]], 
+contrast.name <- paste0(region.types[[1]], 
                         "_", 
                         region.types[[2]])
 
 # Set up the annotations and raw counts for the MA plots
 contrast.field <- "region"
-condition.label <- "tumor"
-reference.label <- "vessel"
+condition.label <- "region_A"
+reference.label <- "region_B"
 raw.log.counts <- pre.norm.counts
 annotation.MA <- annotation
 ```
