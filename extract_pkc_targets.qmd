@@ -1,0 +1,56 @@
+---
+title: "Extract_PKC_Targets"
+format: html
+editor: visual
+---
+
+```{r}
+
+# Load the jsonlite package
+library(jsonlite)
+library(tidyr)
+library(dplyr)
+
+
+```
+
+```{r}
+
+pkc.folder <- "/Users/cauleyes/CPTR/CPTR_nCounter_Protein_Thyroid/pkc/"
+
+pkc.files <- list.files(pkc.folder)
+
+target.list <- list()
+
+for(file in pkc.files){
+  
+  # Read the JSON file
+  file.path <- paste0(pkc.folder, file)
+  pkc.data <- fromJSON(file.path)
+  
+  # Extract the "ProbeGroups" section
+  probe.groups <- pkc.data$ProbeGroups
+  
+  # Save to the final list
+  target.list[[file]] <- probe.groups
+  
+}
+
+
+# Flatten each data frame in the list
+flattened.list <- lapply(names(target.list), function(name) {
+  # Add the list name as a new column for tracking
+  target.list[[name]] %>%
+    mutate(Source = name) %>%
+    unnest(Targets) 
+})
+
+# Combine all the flattened data frames into a single data frame
+final.df <- bind_rows(flattened.list)
+
+
+# Export the targets list
+write.csv(final.df, 
+          "/Users/cauleyes/CPTR/CPTR_nCounter_Protein_Thyroid/pkc/target_list.csv", 
+          row.names = FALSE)
+```
