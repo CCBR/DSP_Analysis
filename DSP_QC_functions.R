@@ -478,3 +478,206 @@ gene_detect_plot <- function(object,
                  "facet.plot" = gene.stacked.bar.plot.facet, 
                  "facet.table" = facet.table))
 }
+
+plot_sankey <- function(object, 
+                        lane.1, 
+                        lane.2, 
+                        lane.3, 
+                        lane.4, 
+                        fill.lane){
+  
+  #Rename the slide name column for formatting
+  pData(object) <- pData(object) %>% 
+    mutate(slide = gsub("slide_", "", slide_name))
+  
+  lanes <- c(lane.1, lane.2, lane.3, lane.4)
+  
+  
+  #Establish variables for the Sankey plot
+  x <- id <- y <- n <- NULL
+  
+  # select the annotations we want to show, use `` to surround column
+  # names with spaces or special symbols
+  
+  # Create a count matrix
+  count.mat <- count(pData(object), 
+                     !!as.name(lane.1), 
+                     !!as.name(lane.2), 
+                     !!as.name(lane.3), 
+                     !!as.name(lane.4))
+  
+  # Remove any rows with NA values
+  na.per.column <- colSums(is.na(count.mat))
+  na.total.count <- sum(na.per.column)
+  
+  if(na.total.count > 0){
+    count.mat <- count.mat[!rowSums(is.na(count.mat)),]
+    rownames(count.mat) <- 1:nrow(count.mat)
+  }
+  
+  
+  # Gather the data and plot in order: lane 1, lane 2, ..., lane n
+  # gather_set_data creates x, id, y, and n fields within sankey.count.data
+  # Establish the levels of the Sankey
+  sankey.count.data <- gather_set_data(count.mat, 1:4)
+  
+  # Define the annotations to use for the Sankey x axis labels
+  sankey.count.data$x[sankey.count.data$x == 1] <- lane.1
+  sankey.count.data$x[sankey.count.data$x == 2] <- lane.2
+  sankey.count.data$x[sankey.count.data$x == 3] <- lane.3
+  sankey.count.data$x[sankey.count.data$x == 4] <- lane.4
+  
+  sankey.count.data$x <-
+    factor(
+      sankey.count.data$x,
+      levels = c(as.name(lane.1), 
+                 as.name(lane.2), 
+                 as.name(lane.3), 
+                 as.name(lane.4)))
+  
+  # For position of Sankey 100 segment scale
+  adjust.scale.pos = -1.1
+  
+  # plot Sankey diagram
+  sankey.plot <-
+    ggplot(sankey.count.data,
+           aes(
+             x,
+             id = id,
+             split = y,
+             value = n
+           )) +
+    geom_parallel_sets(aes(fill = !!as.name(fill.lane)), 
+                       alpha = 0.5, 
+                       axis.width = 0.1) +
+    geom_parallel_sets_axes(axis.width = 0.2, 
+                            fill = "seashell", 
+                            color = "seashell4") +
+    geom_parallel_sets_labels(color = "black",
+                              size = 3,
+                              angle = 0) + 
+    theme_classic(base_size = 14) +
+    theme(
+      legend.position = "bottom",
+      axis.ticks.y = element_blank(),
+      axis.line = element_blank(),
+      axis.text.y = element_blank()
+    ) + 
+    scale_y_continuous(expand = expansion(0)) +
+    scale_x_discrete(expand = expansion(0)) +
+    labs(x = "", y = "") +
+    annotate(
+      geom = "segment",
+      x = (3.25 - adjust.scale.pos),
+      xend = (3.25 - adjust.scale.pos),
+      y = 20,
+      yend = 120,
+      lwd = 2
+    ) +
+    annotate(
+      geom = "text",
+      x = (3.19 - adjust.scale.pos),
+      y = 70,
+      angle = 90,
+      size = 5,
+      hjust = 0.5,
+      label = "100 AOIs"
+    )
+  
+  
+  # Make the annotation bar plot
+  
+  AOI.counts <- sankey.count.data
+  
+  # Gather the counts for each annotation
+  AOI.counts$AOI_count <- as.numeric(AOI.counts$n)
+  AOI.counts$type <- as.character(AOI.counts$x)
+  AOI.counts$annotation <- AOI.counts$y
+  
+  # Create a sum for each annotation
+  AOI.annotation.sum <- data.frame(matrix(ncol = 2, nrow = 0))
+  colnames(AOI.annotation.sum) <- c("annotation", "AOI_sum")
+  
+  # Create a data frame of AOI sums per annotation 
+  for(anno in unique(AOI.counts$annotation)){
+    
+    # Filter for a specific annotation
+    anno.subset <- AOI.counts %>% 
+      filter(annotation == anno)
+    
+    # Add together the AOI counts
+    anno.sum.row <- data.frame(AOI_sum = sum(anno.subset$AOI_count), annotation = anno)
+    
+    # Append to the master AOI sum df
+    AOI.annotation.sum <- rbind(AOI.annotation.sum, anno.sum.row)
+    
+  }
+  
+  # Creare a final df for plotting
+  AOI.counts.all <- merge(AOI.annotation.sum, AOI.counts, by = "annotation")
+  
+  AOI.counts.all  <-  AOI.counts.all %>% 
+    select(all_of(c("AOI_sum", "type", "annotation"))) %>% 
+    distinct()
+  
+  # Create the bar plots
+  AOI.bar.plot <- ggplot(AOI.counts.all, aes(x = annotation, y = AOI_sum)) + 
+    geom_bar(stat = "identity") + 
+    facet_wrap(~ type, ncol = 2, scales = "free_x") + 
+    theme(axis.text.x = element_text(angle = 30, hjust = 1)) + 
+    geom_text(aes(label = AOI_sum), vjust = -0.3, size = 3.5) +
+    labs(x = NULL, y = "AOI Count") + 
+    ylim(0, max(AOI.counts.all$AOI_sum) + 30)
+  
+  return(list("sankey.plot" = sankey.plot, 
+              "AOI.bar.plot" = AOI.bar.plot, 
+              "sankey.count.data" =  sankey.count.data))
+  
+}
+
+upsetr_plot <- function(object, 
+                        annotation.groups){
+  
+  # To hold all annotation values for each annotation of interest
+  all.group.values <- c()
+  
+  # Gather all of the values for the upsetr plot
+  for(group in annotation.groups){ 
+    
+    group.values <- unique(pData(object)[[group]])
+    
+    all.group.values <- c(all.group.values, group.values)
+    
+  }
+  
+  # Create the upset df with all FALSE values
+  upset.df <- as.data.frame(matrix(FALSE, nrow = nrow(pData(object)), 
+                                   ncol = length(all.group.values)))
+  
+  # Rename the columns to be all possible values for the upsetr plot
+  colnames(upset.df) <- all.group.values
+  
+  # Subset the annotation for only the relevant columns for upsetr
+  anno.subset <- pData(object) %>% select(all_of(annotation.groups))
+  
+  # For each row in the annotation data, if it contains the value of a column in the upsetr plot mark as TRUE
+  for (i in 1:nrow(anno.subset)) {
+    row.values <- as.character(unlist(anno.subset[i, ]))
+    upset.df[i, row.values] <- TRUE
+  }
+  
+  # Create the UpSetR Plot
+  AOI.inter.count.plot <- upset(upset.df,  
+                                intersect = all.group.values, 
+                                width_ratio = 0.4, 
+                                min_size = 4, 
+                                set_sizes=(upset_set_size() + 
+                                             geom_text(aes(label=..count..),
+                                                       hjust=1.1, stat='count') +
+                                             expand_limits(y=nrow(upset.df)) +
+                                             theme(axis.text.x=element_text(angle=90))))
+  
+  
+  return(AOI.inter.count.plot)
+  
+}
