@@ -681,3 +681,133 @@ upsetr_plot <- function(object,
   return(AOI.inter.count.plot)
   
 }
+
+loq_detection <- function(object, 
+                          pkc.file.names){
+  
+  # Set up lists of segment IDs
+  segment.list.total <- pData(object)$segmentID
+  
+  # Define Modules
+  modules <- gsub(".pkc", "", pkc.file.names)
+  
+  # Calculate limit of quantification (LOQ) in each segment
+  # LOQ = geomean(NegProbes) * geoSD(NegProbes)^(LOQ cutoff)
+  # LOQ is calculated for each module (pkc file)
+  loq <- data.frame(row.names = colnames(object))
+  
+  loq.min <- 2
+  loq.cutoff <- 2
+  
+  for(module in modules) {
+    vars <- paste0(c("NegGeoMean_", "NegGeoSD_"),
+                   module)
+    if(all(vars[1:2] %in% colnames(pData(object)))) {
+      
+      neg.geo.mean <- vars[1]
+      neg.geo.sd <- vars[2]
+      
+      loq[, module] <-
+        pmax(loq.min,
+             pData(object)[, neg.geo.mean] * 
+               pData(object)[, neg.geo.sd] ^ loq.cutoff)
+    }
+  }
+  
+  # Store the loq df in the annotation df
+  pData(object)$loq <- loq
+  
+  # Setup a master loq matrix
+  loq.mat <- c()
+  
+  
+  for(module in modules) {
+    # Gather rows with the given module
+    ind <- fData(object)$Module == module
+    
+    # Check if each feature has counts above the LOQ
+    mat.i <- t(esApply(object[ind, ], MARGIN = 1,
+                       FUN = function(x) {
+                         x > loq[, module]
+                       }))
+    
+    # Store results in the master loq matrix
+    loq.mat <- rbind(loq.mat, mat.i)
+  }
+  
+  # ensure ordering since this is stored outside of the geomxSet
+  loq.mat <- loq.mat[fData(object)$TargetName, ]
+  
+  # Evaluate and Filter Segment Gene Detection Rate
+  # Save detection rate information to pheno data
+  pData(object)$GenesDetected <- colSums(loq.mat, na.rm = TRUE)
+  pData(object)$GeneDetectionRate <- 100*(pData(object)$GenesDetected / nrow(object))
+  
+  # Establish detection bins
+  detection.bins <- c("<1", "1-5", "5-10", "10-15", ">15")
+  
+  # Determine detection thresholds: 1%, 5%, 10%, 15%, >15%
+  pData(object)$DetectionThreshold <- 
+    cut(pData(object)$GeneDetectionRate,
+        breaks = c(0, 1, 5, 10, 15, 100),
+        labels = detection.bins)
+  
+  return(object)
+  
+}
+
+aoi_flag_table <- function(aoi.flags){
+  
+  flag.column.detect <- sapply(aoi.flags, is.logical)
+  flag.column.names <- names(aoi.flags[flag.column.detect])
+  
+  # A function for coloring TRUE flags as red
+  red.flag <- function(x) {
+    x <- as.logical(x)
+    ifelse(x, "red", "white") 
+  }
+  
+  # Create the table using the flag coloring function
+  aoi.flag.table <- qc.output$segment.flags %>% 
+    gt() %>% 
+    data_color(columns = flag.column.names, 
+               fn = red.flag, 
+               alpha = 0.7)
+  
+  return(aoi.flag.table)
+  
+}
+
+probe_flag_table <- function(probe.flags, 
+                             object){
+  
+  # Create the table for probe flags
+  probe.flags.df <- probe.flags %>% separate_rows(LocalFlag, sep = ",")
+  
+  # Rename the dcc file name column
+  probe.flags.df$Sample_ID <- probe.flags.df$LocalFlag
+  
+  # Grab the annotation for only the columns to map
+  annotation <- pData(object)
+  annotation$Sample_ID <- rownames(annotation)
+  
+  annotation.subset <- annotation %>% 
+    select(Sample_ID, segmentID)
+  
+  # Map the AOI names in the flags to the segmentID
+  probe.flags.df <- merge(probe.flags.df, annotation.subset, by = "Sample_ID")
+  
+  # Remove the dcc file name column 
+  probe.flags.table <- probe.flags.df %>% 
+    select(TargetName, RTS_ID, segmentID, FlagType) %>% 
+    gt()
+  
+  # For a summary of only probe names
+  probe.flag.summary <- qc.output$probe.flags %>% 
+    select(TargetName, RTS_ID, FlagType) %>% 
+    gt()
+  
+  return(list("probe.flag.table" = probe.flags.table, 
+              "probe.flag.summary" = probe.flag.summary))
+  
+}
