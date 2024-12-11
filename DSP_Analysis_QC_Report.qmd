@@ -30,7 +30,7 @@ library(ggrepel)
 library(ggforce)
 library(shadowtext)
 library(stringr)
-library(PCAtools)s
+library(PCAtools)
 library(readxl)
 library(gridExtra)
 library(grid)
@@ -41,6 +41,7 @@ library(openxlsx)
 library(ComplexUpset)
 library(reshape2)
 library(cowplot)
+library(preprocessCore)
 
 source("DSP_QC_functions.R")
 ```
@@ -137,6 +138,8 @@ upsetr.plot <- upsetr_plot(object = init.object,
                                                  "region", 
                                                  "segment"))
 
+print(upsetr.plot)
+
 
 ```
 
@@ -155,7 +158,7 @@ qc.output <-  qcProc(object = init.object,
                         max.ntc.count = 1000,     
                         min.nuclei = 200,         
                         min.area = 1000,
-                        print.plots = TRUE)
+                        print.plots = FALSE)
     
 
 ```
@@ -215,7 +218,7 @@ print(probe.flags.table)
 ```{r Filtering}
 
 # Add LOQ and calculate detection of genes per AOI
-object <- loq_detection(object = qc.output$object, 
+loq.detection.output <- loq_detection(object = qc.output$object, 
               pkc.file.names = pkc.file.name)
 ```
 
@@ -223,52 +226,33 @@ object <- loq_detection(object = qc.output$object,
 
 @fig-GeneDetectionbByAOI shows detection rate per AOI, colored by region.
 
-```{r Overall Gene Detection per AOI}
-#| label: fig-GeneDetectionbByAOI
-#| tbl-cap: "Overall Gene Detection per AOI"
+```{r Overall AOI Detection}
+#| label: fig-AOIDetection
+#| tbl-cap: "AOI Detection"
 #| warning: false
 
-# stacked bar plot of different cut points (1%, 5%, 10%, 15%)
-segment.stacked.bar.plot <- ggplot(pData(object),
-                          aes(x = DetectionThreshold)) +
-  geom_bar(aes(fill = region)) +
-  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
-  theme_bw() +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Gene Detection Rate",
-         y = "Segments, #",
-         fill = "AOI Annotation")
+aoi.detection <- aoi_detection(object = loq.detection.output$object)
 
+print(gene.detection.per.aoi$detection.bar.plot)
 
-print(segment.stacked.bar.plot)
 ```
 
 AOIs in the low detection bin of 1-5%
 
 ```{r Low Detection AOI}
+#| warning: false
+#| message: false
 
-# cut percent genes detected at 1, 5, 10, 15
-segment.table <- kable(table(pData(object)$DetectionThreshold, 
-                             pData(object)$class))
-
-# Make a list of segments with low detection
-low.detection.segments <- pData(object) %>% 
-  filter(GeneDetectionRate < 5) %>% 
-  select(any_of(c("segmentID", "GeneDetectionRate")))
-rownames(low.detection.segments) <- NULL
-
-# Print low detection segment table
-low.detection.segments %>% 
-  gt()
+print(gene.detection.per.aoi$low.detection.table)
 
 ```
 
-Gene detection for all AOIs
-
 ```{r Gene Detection All AOIs}
+#| warning: false
+#| message: false
 
-# Export a summary of the segment gene detection
-segment.detection.summary <- pData(object) %>% 
+# Store the AOI detection for export in the QC summary
+aoi.detection.summary <- pData(object) %>% 
   select(any_of(c("segmentID", "GeneDetectionRate", "DetectionThreshold")))
 
 ```
@@ -276,56 +260,62 @@ segment.detection.summary <- pData(object) %>%
 ##### Filter out AOIs with low detection
 
 ```{r Filter by AOI}
+#| warning: false
+#| message: false
 
 # Filter the data using the cutoff for gene detection rate
-segment.gene.rate.cutoff <- 0
+aoi.gene.rate.cutoff <- 5
 
-object.segment.filtered <-
-    object[, pData(object)$GeneDetectionRate >= segment.gene.rate.cutoff]
+object.aoi.filtered <-
+    object[, pData(object)$GeneDetectionRate >= aoi.gene.rate.cutoff]
+
+# Create a table of AOIs that are filtered out
+aoi.filtered.out <- pData(object[, pData(object)$GeneDetectionRate < aoi.gene.rate.cutoff])
+
+aoi.filtered.out.table <- aoi.filtered.out %>% 
+  select(segmentID, GeneDetectionRate) %>% 
+  gt() %>% 
+  tab_header(title = "AOIs Filtered Out", 
+             subtitle = paste0(aoi.gene.rate.cutoff, "% Cutoff"), preheader = NULL)
+
+print(aoi.filtered.out.table)
 
 ```
 
 #### Detection per Gene
 
 ```{r Detection per Gene}
+#| warning: false
+#| message: false
 
-# Evaluate and Filter Study-wide Gene Detection Rate 
-# Calculate detection rate:
-loq.mat <- loq.mat[, colnames(object.segment.filtered)]
-
-fData(object.segment.filtered)$DetectedSegments <- rowSums(loq.mat, na.rm = TRUE)
-fData(object.segment.filtered)$DetectionRate <-
-  100*(fData(object.segment.filtered)$DetectedSegments / nrow(pData(object)))
-
-# Establish detection bins
-detection.bins <- c("0", "<1", "1-5", "5-10", "10-20", "20-30", "30-40", "40-50", ">50")
-
-# Determine detection thresholds: 1%, 5%, 10%, 15%, >15%
-fData(object.segment.filtered)$DetectionThreshold <- 
-  cut(fData(object.segment.filtered)$DetectionRate,
-      breaks = c(-1, 0, 1, 5, 10, 20, 30, 40, 50, 100),
-      labels = detection.bins)
-
+# Rerun LOQ to calculate new detection rate for individual genes:
+loq.detection.output.aoi.filtered <- loq_detection(object = object.aoi.filtered, 
+                                      pkc.file.names = pkc.file.name)
 ```
 
-@fig-DetectionPerGene shows the percent of all AOIs individual genes are detected within
+@fig-GeneDetection shows the gene detection as a percent of all AOIs
 
-```{r Detection per Gene Plot}
-#| label: fig-DetectionPerGene
+```{r Gene Detection Plot}
+#| label: fig-GeneDetection
 #| fig-cap: "Gene Detection Percent of All AOIs"
 #| warning: false
 
-gene.stacked.bar.plot <- ggplot(fData(object.segment.filtered),
-                          aes(x = DetectionThreshold)) +
-  geom_bar(aes(fill = Module)) +
-  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
-  theme_bw() +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  labs(x = "Gene Detection Rate",
-         y = "Genes, #",
-         fill = "Probe Set")
+gene.detection <- gene_detection(object = loq.detection.output.aoi.filtered$object, 
+                                    facet.column = "region", 
+                                    loq.mat = loq.detection.output.aoi.filtered$loq.matrix)
 
-print(gene.stacked.bar.plot)
+print(gene.detection$total.plot)
+```
+
+@fig-FacetGeneDetection shows the gene detection as a percent of all AOIs per annotation group
+
+```{r Facet Gene Detection Plot}
+#| label: fig-FacetGeneDetection
+#| fig-cap: "Gene Detection Percent of All AOIs per Annotation Group"
+#| warning: false
+
+print(gene.detection$facet.plot)
+
 ```
 
 Gene detection rates for specified genes of interest
@@ -338,58 +328,36 @@ Gene detection rates for specified genes of interest
 # Gene of interest detection table
 goi <- c("A2M", "CD44")
 
-goi.table <- data.frame(Gene = goi,
-                        Number = fData(object.segment.filtered)[goi, "DetectedSegments"],
-                        DetectionRate = fData(object.segment.filtered)[goi, "DetectionRate"])
-
+goi.df <- data.frame(Gene = goi,
+                     Number = fData(loq.detection.output.aoi.filtered$object)[goi, "DetectedSegments"],
+                     DetectionRate = fData(loq.detection.output.aoi.filtered$object)[goi, "DetectionRate"])
 
 # Print the GOI table
-goi.table %>% 
-  gt()
+goi.table <- goi.table %>% gt()
+
+print(goi.table)
 ```
 
 @fig-DetectionPerGeneLoss shows the loss of percentage of all AOIs individual genes are detected within
 
 ```{r Gene Detection Rates Loss Plot}
 #| label: fig-DetectionPerGeneLoss
-#| fig-cap: "Gene Detection Percent of All AOIs"
+#| fig-cap: "Gene Detection Loss"
 #| warning: false
 
-# Plot detection rate:
-plot.detect <- data.frame(Freq = c(1, 5, 10, 20, 30, 50))
-plot.detect$Number <-
-  unlist(lapply(c(1, 5, 10, 20, 30, 50),
-                function(x) {sum(fData(object.segment.filtered)$DetectionRate >= x)}))
-
-plot.detect$Rate <- plot.detect$Number / nrow(fData(object.segment.filtered))
-rownames(plot.detect) <- plot.detect$Freq
-
-genes.detected.plot <- ggplot(plot.detect, aes(x = as.factor(Freq), y = Rate, fill = Rate)) +
-  geom_bar(stat = "identity") +
-  geom_text(aes(label = formatC(Number, format = "d", big.mark = ",")),
-            vjust = 1.6, color = "black", size = 4) +
-  scale_fill_gradient2(low = "orange2", mid = "lightblue",
-                       high = "dodgerblue3", midpoint = 0.65,
-                       limits = c(0,1),
-                       labels = scales::percent) +
-  theme_bw() +
-  scale_y_continuous(labels = scales::percent, limits = c(0,1),
-                     expand = expansion(mult = c(0, 0))) +
-  labs(x = "% of Segments",
-       y = "Genes Detected, % of Panel > loq")
-
-print(genes.detected.plot)
-
+print(gene.detection$detect.loss.plot)
 
 ```
 
 Summary of all gene detection rates
 
 ```{r Gene Detection Rate Summary}
+#| warning: false
+#| message: false
 
 # Gather a summary of the every gene's detection percentage in all AOIs
-gene.detection.summary <- fData(object.segment.filtered) %>% 
-  mutate(gene = rownames(fData(object.segment.filtered))) %>% 
+gene.detection.summary <- fData(loq.detection.output.aoi.filtered$object) %>% 
+  mutate(gene = rownames(fData(loq.detection.output.aoi.filtered$object))) %>% 
   select(any_of(c("gene", "DetectionRate", "DetectionThreshold")))
 
 
@@ -398,43 +366,60 @@ gene.detection.summary <- fData(object.segment.filtered) %>%
 ##### Filter out genes with low detection
 
 ```{r Filter Genes}
+#| warning: false
+#| message: false
 
-# Set the cutoff for gene detection
-study.gene.rate.cutoff <- 0.00
+# Set the cutoff for gene detection (percentage)
+gene.detection.cutoff <- 5
+
+# Manually include the negative control probe, for downstream use
+negative.probe.fData <- subset(fData(loq.detection.output.aoi.filtered$object), CodeClass == "Negative")
+neg.probes <- unique(negative.probe.fData$TargetName)
 
 # Subset for genes above the study gene detection rate cutoff
-# Manually include the negative control probe, for downstream use
-negative.probe.fData <- subset(fData(object.segment.filtered), CodeClass == "Negative")
-neg.probes <- unique(negative.probe.fData$TargetName)
-object.gene.filtered <- object.segment.filtered[fData(object.segment.filtered)$DetectionRate >= study.gene.rate.cutoff |
-                   fData(object.segment.filtered)$TargetName %in% neg.probes, ]
+object.gene.filtered <- loq.detection.output.aoi.filtered$object[fData(loq.detection.output.aoi.filtered$object)$DetectionRate >= gene.detection.cutoff |
+                   fData(loq.detection.output.aoi.filtered$object)$TargetName %in% neg.probes, ]
+
+# Create a summary of genes that are filtered out
+genes.filtered.out <- fData(loq.detection.output.aoi.filtered$object[fData(loq.detection.output.aoi.filtered$object)$DetectionRate < gene.detection.cutoff, ])
+
+print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet Object. For the full list, check the QC Output File."))
+
 ```
 
 **Write QC Output File**
 
 ```{r Write QC output}
 
-# Start the QC output excel workbook
-qc.info.output <- createWorkbook()
+write.qc.file <- FALSE
 
-# Add the AOI flag info to the output file
-addWorksheet(qc.info.output, "AOI QC Flags")
-writeData(qc.info.output, sheet = "AOI QC Flags", qc.output$segment.flags)
+if(write.qc.file == TRUE){
+  
+  # Start the QC output excel workbook
+  qc.info.output <- createWorkbook()
+  
+  # Add the AOI flag info to the output file
+  addWorksheet(qc.info.output, "AOI QC Flags")
+  writeData(qc.info.output, sheet = "AOI QC Flags", qc.output$segment.flags)
+  
+  # Add the probe flag QC info to the output file
+  addWorksheet(qc.info.output, "Probe QC Flags")
+  writeData(qc.info.output, sheet = "Probe QC Flags", probe.flags.table)
 
-# Add the probe flag QC info to the output file
-addWorksheet(qc.info.output, "Probe QC Flags")
-writeData(qc.info.output, sheet = "Probe QC Flags", probe.flags.table)
+  # Add the AOI detection QC info
+  addWorksheet(qc.info.output, "AOI Detection Rate")
+  writeData(qc.info.output, sheet = "AOI Detection Rate", segment.detection.summary)
+  
+  # Add the Gene detection QC info to the output file
+  addWorksheet(qc.info.output, "Gene Detection Rate")
+  writeData(qc.info.output, sheet = "Gene Detection Rate", gene.detection.summary)
+  
+  # Save the QC output file
+  saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
+  
+}
 
-# Add the AOI detection QC info
-addWorksheet(qc.info.output, "AOI Detection Rate")
-writeData(qc.info.output, sheet = "AOI Detection Rate", segment.detection.summary)
 
-# Add the Gene detection QC info to the output file
-addWorksheet(qc.info.output, "Gene Detection Rate")
-writeData(qc.info.output, sheet = "Gene Detection Rate", gene.detection.summary)
-
-# Save the QC output file
-saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
 ```
 
 #### Q3 versus Negative Background
@@ -553,6 +538,25 @@ stat.data <- stat.data %>%
 
 ```
 
+#### Nuclei per ROI Plot
+
+```{r Nuclei per Annotation}
+#| warning: false
+#| message: false
+
+# Plot the number of nuclei per ROI for an annotation of interest
+object <- object.gene.filtered
+
+annotation <- pData(object.gene.filtered)
+
+nuclei.plot <- nuclei_plot(annotation = annotation, 
+                           color = "region", 
+                           facet = "class", 
+                           x.axis = "roi", 
+                           order.by.ROI.num = TRUE)
+
+```
+
 ### Normalization
 
 ```{r Normalization, warning=FALSE, message=FALSE}
@@ -575,6 +579,32 @@ if(export.norm.object == TRUE){
   save(object, file = paste0(params$results.folder, params$run.folder, "$normalized.object.RDA"))
   
 }   
+```
+
+#### RLE Plots
+
+```{r RLE Plots}
+#| warning: false
+#| message: false
+
+# Counts
+raw.counts <- q3.normalization.output$object@assayData$exprs
+q3.counts <- q3.normalization.output$object@assayData$q_norm
+neg.counts <- neg.normalization.output$object@assayData$neg_norm
+
+# Annotation
+annotation <- pData(q3.normalization.output$object)
+
+raw.rle <- make_rle_plot(counts = raw.counts, 
+                         annotation = annotation, 
+                         annotation.facet = "region")
+
+q3.rle <- make_rle_plot(counts = q3.counts, 
+                         annotation = annotation, 
+                         annotation.facet = "region")
+
+
+
 ```
 
 #### **Example AOIs**
