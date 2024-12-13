@@ -618,67 +618,35 @@ aoi_detection <- function(object){
   
 }
 
-
-plot_distribution <- function(object, annotation.fields){
+plot_distribution <- function(object, facet.annotation){
   
-  # run reductions
+  # Set up variables for computing stat data
   color.variable <- Value <- Statistic <- NegProbe <- Q3 <- Annotation <- NULL
-  
-  # Start Function
   neg.probes<- "NegProbe-WTX"
   
-  # Set up a list of annotation fields and values
-  annotation.list <- list()
-  for(field in annotation.fields){
-    annotation.list[[field]] <- unique(pData(object)[[field]])
-  }
-  
-  count.data <- t(exprs(object))
-  
-  annotation.data <- pData(object)
-  
+  # Compute the stat data
   stat.data <- base::data.frame(row.names = colnames(exprs(object)),
                                 AOI = colnames(exprs(object)),
-                                Annotation = Biobase::pData(object)[, annotation.fields],
+                                Annotation = Biobase::pData(object)[, facet.annotation],
                                 Q3 = unlist(apply(exprs(object), 2,
                                                   quantile, 0.75, na.rm = TRUE)),
                                 NegProbe = exprs(object)[neg.probes, ])
   
-  
-  
-  stat.data <- stat.data %>% 
-    mutate(sig2noise = Q3 / NegProbe)
-  
-  
+  # Melt stat data for easier plotting
   stat.data.melt <- melt(stat.data, measures.vars = c("Q3", "NegProbe"),
                          variable.name = "Statistic", value.name = "Value")
   
-  stat.data.melt <- melt(stat.data, 
-                         measure.vars = annotation.fields, 
-                         variable.name = "field", 
-                         value.name = "annotation")
   
-  distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
-                                                  color=Annotation, 
-                                                  fill=Annotation)) + 
-    geom_density(alpha=0.6) + 
-    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
-                       expand = expansion(mult = c(0, 0))) + 
-    labs(title=" Distribution per AOI of All Probes vs Negative", 
-         x="Probe Counts per AOI", 
-         y = "Density from AOI Count", 
-         color = "Annotation", 
-         fill = "Annotation") +
-    theme_bw()
+  # Compute means for each annnotation group and negative background
+  stat.data.mean <- stat.data.melt %>% 
+    mutate(group = paste0(Annotation, Statistic)) %>% 
+    group_by(group) %>% 
+    mutate(group_mean = mean(Value)) %>% 
+    ungroup() %>% 
+    select(Annotation, Statistic, group_mean) %>% 
+    distinct()
   
-  #stat.data.mean <- stat.data.m %>% 
-  #  mutate(group = paste0(Annotation, Statistic)) %>% 
-  #  group_by(group) %>% 
-  #  mutate(group_mean = mean(Value)) %>% 
-  #  ungroup() %>% 
-  #  select(Annotation, Statistic, group_mean) %>% 
-  #  distinct()
-  
+  # Plot with annotation groups separated
   distribution.plot <- ggplot(stat.data.melt, aes(x=Value, 
                                                   color=Statistic, 
                                                   fill=Statistic)) + 
@@ -687,18 +655,74 @@ plot_distribution <- function(object, annotation.fields){
                linetype="dashed") +
     scale_color_manual(values = c("#56B4E9", "#E69F00")) +
     scale_fill_manual(values=c("#56B4E9", "#E69F00")) + 
-    scale_x_continuous(limits = c(0, max(stat.data.melt$Value) + 10), 
-                       expand = expansion(mult = c(0, 0))) +  
+    scale_x_continuous(trans = "log2") +  
     facet_wrap(~Annotation, nrow = 1) + 
-    labs(title=" Distribution per AOI of All Probes vs Negative", 
+    labs(title=paste0("Density of AOI counts Q3 vs Negative by ", facet.annotation), 
          x="Probe Counts per AOI", 
          y = "Density from AOI Count", 
          color = "Statistic", 
          fill = "Statistic") +
     theme_bw()
   
-}  
-
+  # Plot overlapping density
+  distribution.plot.overlap <- ggplot(stat.data.melt, aes(x=Value, 
+                                                          color=Annotation, 
+                                                          fill=Annotation)) + 
+    geom_density(alpha=0.2) + 
+    scale_x_continuous(trans = "log2") + 
+    labs(title=paste0("Density of AOI counts Q3 by ", facet.annotation), 
+         x="Probe Counts per AOI", 
+         y = "Density from AOI Count", 
+         color = "Annotation", 
+         fill = "Annotation") +
+    theme_bw()
+  
+  # Combine plots into a single output
+  distr.plots <- plot_grid(distribution.plot, 
+                           distribution.plot.overlap, 
+                           ncol = 1)
+  
+  # Create the dot plot
+  q3.neg.slope.plot <- ggplot(stat.data, 
+                              aes(x = NegProbe, y = Q3, color = Annotation)) + 
+    geom_abline(intercept = 0, 
+                slope = 1, 
+                lty = "dashed", 
+                color = "darkgray") + 
+    geom_point() + guides(color = "none") + 
+    theme_bw() + 
+    scale_x_continuous(trans = "log2") + 
+    scale_y_continuous(trans = "log2") + 
+    theme(aspect.ratio = 1) + 
+    labs(x = "Negative Probe GeoMean, Counts", y = "Q3 Value, Counts")
+  
+  # Create the ratio dot plot
+  q3.neg.ratio.plot <- ggplot(stat.data, 
+                              aes(x = NegProbe, 
+                                  y = Q3/NegProbe, 
+                                  color = Annotation)) + 
+    geom_hline(yintercept = 1, 
+               lty = "dashed", 
+               color = "darkgray") + 
+    geom_point() + 
+    theme_bw() + 
+    scale_x_continuous(trans = "log2") + 
+    scale_y_continuous(trans = "log2") + 
+    theme(aspect.ratio = 1) + 
+    labs(x = "Negative Probe GeoMean, Counts", y = "Q3/NegProbe Value, Counts")
+  
+  stat.data <- stat.data %>% 
+    mutate(q3_neg_ratio = Q3/NegProbe) %>% 
+    mutate(low_ratio_flag = ifelse(q3_neg_ratio < 1.1, 
+                                   "TRUE", 
+                                   "FALSE"))
+  
+  return(list("stat.data" = stat.data, 
+              "q3.neg.ratio.plot" = q3.neg.ratio.plot, 
+              "q3.neg.slope.plot" = q3.neg.slope.plot, 
+              "distr.plots" = distr.plots))
+  
+}
 
 # Set up the MA plot table
 make_MA <- function(contrast.field, 
