@@ -222,16 +222,10 @@ make_volcano <- function(lmm.results,
                          x.axis.title, 
                          fc.limit = 1, 
                          pos.label.limit = 1, 
-                         neg.label.limit = -1){ 
+                         neg.label.limit = -1, 
+                         custom.gene.labels = NULL){ 
   
   ## Make a volcano plot for the comparison
-  
-  # Define the columns for the volcano plot data
-  #logfc.column.name <- paste0("logFC_", comparison)
-  #padj.column.name <- paste0("adj.pval", comparison)
-  
-  #results$logfc <- results[[logfc.column.name]]
-  #results$padj <- results[[padj.column.name]]
   
   # Create a column for direction of DEGs
   lmm.results$de_direction <- "NONE"
@@ -248,6 +242,21 @@ make_volcano <- function(lmm.results,
                                  NA
                                  )
   
+  # Create a label for DEGs
+  if(is.null(custom.gene.labels)){
+    
+    lmm.results$deglabel <- ifelse(lmm.results$de_direction == "NONE", 
+                                   NA, 
+                                   lmm.results$gene)
+    
+  } else {
+    
+    lmm.results$deglabel <- ifelse(lmm.results$gene %in% custom.gene.labels, 
+                                   lmm.results$gene, 
+                                   NA)
+    
+  }
+  
   # Compute the scale for the volcano x-axis
   log2.scale <- max(abs(lmm.results$logfc))
   
@@ -255,29 +264,85 @@ make_volcano <- function(lmm.results,
   contrast.level.colors <- c("steelblue4", "grey", "violetred4")
   names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
   
-  # Make the volcano plot
-  volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+  # Make the volcano plot based on custom gene labels
+  if(is.null(custom.gene.labels)){
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
+    
+    volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+                                                   y = -log10(padj), 
+                                                   col = de_direction, 
+                                                   label = deglabel)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      xlim(-7.5, 7.5) + 
+      labs(x = x.axis.title,
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors) + 
+      geom_text_repel(max.overlaps = Inf) + 
+      xlim(-log2.scale-1, log2.scale+1) + 
+      theme(plot.title = element_text(hjust = 0.5))
+    
+  } else {
+    
+    # Label the custom genes depending on significance
+    lmm.results <- lmm.results %>% 
+      mutate(custom.label = ifelse(!is.na(deglabel) & de_direction == "NONE", 
+                                   "BLACK", 
+                                   ifelse(!is.na(deglabel) & de_direction != "NONE", 
+                                          de_direction, 
+                                          "NONE")))
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4", "black")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP", "BLACK")
+    
+    lmm.results.labeled <- lmm.results %>%
+      filter(custom.label != "NONE")
+    
+    lmm.results.unlabeled <- lmm.results %>% 
+      filter(custom.label == "NONE")
+    
+    
+    volcano.plot <- ggplot() + 
+      geom_point(data = lmm.results.unlabeled, aes(x = logfc, 
+                                                   y = -log10(padj), 
+                                                   col = custom.label, 
+                                                   alpha = 0.5)) + 
+      geom_point(data = lmm.results.labeled, aes(x = logfc, 
                                                  y = -log10(padj), 
-                                                 col = de_direction, 
-                                                 label = deglabel)) +
-    geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
-    geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
-    xlim(-7.5, 7.5) + 
-    labs(x = x.axis.title,
-         y = "-log10 adjusted p-value", 
-         title = title) + 
-    geom_point(size = 2) +
-    scale_color_manual(legend.title, 
-                       values = contrast.level.colors) + 
-    geom_text_repel(max.overlaps = Inf) + 
-    xlim(-log2.scale-1, log2.scale+1) + 
-    theme(plot.title = element_text(hjust = 0.5))
+                                                 col = custom.label, 
+                                                 alpha = 1)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      xlim(-7.5, 7.5) + 
+      labs(x = x.axis.title,
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors, 
+                         breaks = c("DOWN", "UP")) + 
+      geom_text_repel(data = lmm.results.labeled,
+                      aes(x = logfc, 
+                          y = -log10(padj), 
+                          label = deglabel, 
+                          col = custom.label), 
+                      max.overlaps = Inf, 
+                      size = 6, 
+                      show.legend = FALSE) + 
+      xlim(-log2.scale-1, log2.scale+1) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_alpha_identity(guide = "none")
+    
+  }
   
   return(list("volcano.plot" = volcano.plot))
   
 }
-
-region.types <- c("tumor", "vessel")
 
 # Set up the MA plot table
 make_MA <- function(contrast.field, 
@@ -378,8 +443,8 @@ run_GSEA <- function(){
   
 }
 
-make_heatmap <- function(normalized.log.counts.df, 
-                         de.results, 
+make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts, 
+                         de.results = NULL, 
                          top.degs = FALSE, 
                          top.variable = FALSE, 
                          logfc.column = NULL, 
@@ -387,8 +452,8 @@ make_heatmap <- function(normalized.log.counts.df,
                          annotation.column, 
                          annotation.row = NULL, 
                          anno.colors, 
-                         cluster.rows = FALSE, 
-                         cluster.columns = FALSE, 
+                         cluster.rows = TRUE, 
+                         cluster.columns = TRUE, 
                          main.title, 
                          row.gaps = NULL, 
                          column.gaps = NULL, 
@@ -427,6 +492,8 @@ make_heatmap <- function(normalized.log.counts.df,
       
     }
     
+    main.title = "DEGs with adj p-val < 0.05"
+    
     # Revert to only p-value correction if no DEGs with logFC cutoff
     if(length(rownames(degs.df)) < 2){
       
@@ -435,6 +502,19 @@ make_heatmap <- function(normalized.log.counts.df,
         arrange(desc(padj))
       
       print("Not enough DEGs with listed logFC cutoff, reverting to all DEGs with adj p-value < 0.05")
+      
+    }
+    
+    # Revert to non-adjusted p-value if no DEGs with adj p-val cutoff
+    if(length(rownames(degs.df)) < 2){
+      
+      degs.df <- de.results %>% 
+        filter(pval < 0.05) %>% 
+        arrange(desc(pval))
+      
+      print("Not enough DEGs with adj p-val < 0.05, reverting to NON-adjusted p-value < 0.05")
+      
+      main.title = "DEGs with p-val < 0.05 (NOT adjusted)"
       
     }
     
