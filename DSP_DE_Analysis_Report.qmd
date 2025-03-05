@@ -476,3 +476,431 @@ venn.up.degs <- venn.diagram(up.results.list,
 
 grid.draw(venn.up.degs)
 ```
+
+# **Cell Type Deconvolution**
+
+#### Set up
+
+```{r Cell Type Deconvolution}
+#| warning: false
+#| message: false
+
+# Get the reference sets
+# Example Human Reference
+human.skin.ref <- download_profile_matrix(species = "Human",
+                                       age_group = "Adult", 
+                                       matrixname = "Skin_HCA")
+
+# Example Mouse Reference
+human.immune.ref <- download_profile_matrix(species = "Mouse",
+                                       age_group = "Adult", 
+                                       matrixname = "PeripheralBlood_MCA.RData")
+
+# Derive the probe set background
+
+# Extract the normalized read counts
+object <- normalized.object.list$object
+q3.normalized.reads <- object@assayData$q_norm
+
+# Extract the gene (feature) names
+feature.data <- fData(object)
+
+# Derive the probe background
+probe.background <- derive_GeoMx_background(norm = q3.normalized.reads,
+                                            probepool = feature.data$Module,
+                                            negnames = c("NegProbe-WTX"))
+
+
+# Combine terms in the reference, this is optional
+# Example list of combining terms, all terms must be included even if not combining some
+# Combine common cell types
+skin.combine.types <- list(
+  Macrophages = c("Macrophages.DC.1", 
+                  "Macrophages.DC.2", 
+                  "Macrophages.DC.3"), 
+  Melanocytes = c("Melanocytes.1", 
+                  "Melanocytes.2"), 
+  Pericytes = c("Pericytes.1", 
+                  "Pericytes.2"), 
+  Keratinocytes = c("Keratinocytes.1", 
+                  "Keratinocytes.2"), 
+  T.cells = c("T.cells"), 
+  Secretory.reticular.Fibroblast = c("Secretory.reticular.Fibroblast"), 
+  Pro.inflammatory.Fibroblast = c("Pro.inflammatory.Fibroblast"), 
+  Secretory.papillary.Fibroblast = c("Secretory.papillary.Fibroblast"), 
+  Mesenchymal.Fibroblast = c("Mesenchymal.Fibroblast"), 
+  Vascular.EC = c("Vascular.EC"), 
+  Lymphatic.EC = c("Lymphatic.EC"), 
+  Erythrocytes = c("Erythrocytes")
+)
+
+# Run spatial decon for each reference set
+# Example using human skin reference
+spatial.decon.skin = runspatialdecon(object = object,
+                      norm_elt = "q_norm",
+                      raw_elt = "exprs",
+                      X = human.skin.ref,
+                      align_genes = TRUE, 
+                      cellmerges = skin.combine.types)
+```
+
+#### Heatmap
+
+```{r Deconvolution Heatmap}
+#| warning: false
+#| message: false
+
+anno.colors = list(
+      region = c(tumor = "pink",
+                 vessel = "seagreen1", 
+                 immune = "steelblue1", 
+                 'immune/stroma' = "maroon"), 
+      segment = c(full_ROI = "darkgoldenrod2", 
+                  LANA_pos = "slateblue")
+      )
+
+# Subset the annotation just for the heatmap annotations of interest
+spatial.annotation <- spatial.input$annotation %>% 
+  select(c(names(anno.colors), AOI_ID))
+
+# Generate a mapping df for AOI IDs
+spatial.annotation$sample_ID <- rownames(spatial.annotation)
+ID.mapping <- spatial.annotation %>% 
+  select(sample_ID, AOI_ID)
+
+# Change the annotation row names
+rownames(spatial.annotation) <- spatial.annotation$AOI_ID
+spatial.annotation <- spatial.annotation %>% 
+  select(names(anno.colors))
+
+# Gather the scores for each cell type with each ref set
+skin.cell.scores <- as.data.frame(spatial.decon.skin$beta)
+immune.cell.scores <- as.data.frame(spatial.decon.immune$beta)
+bahman.cell.scores <- as.data.frame(spatial.decon.bahman$beta)
+
+# Add a column for mapping to AOI ID
+skin.cell.scores$sample_ID <- rownames(skin.cell.scores)
+immune.cell.scores$sample_ID <- rownames(immune.cell.scores)
+bahman.cell.scores$sample_ID <- rownames(bahman.cell.scores)
+
+# Map the AOI ID
+skin.cell.scores <- merge(skin.cell.scores, ID.mapping, by = "sample_ID")
+immune.cell.scores <- merge(immune.cell.scores, ID.mapping, by = "sample_ID")
+bahman.cell.scores <- merge(bahman.cell.scores, ID.mapping, by = "sample_ID")
+
+# Replace the rownames and remove extra ID columns
+rownames(skin.cell.scores) <- skin.cell.scores$AOI_ID
+skin.cell.scores <- skin.cell.scores %>% 
+  select(-AOI_ID, -sample_ID)
+
+rownames(immune.cell.scores) <- immune.cell.scores$AOI_ID
+immune.cell.scores <- immune.cell.scores %>% 
+  select(-AOI_ID, -sample_ID)
+
+rownames(bahman.cell.scores) <- bahman.cell.scores$AOI_ID
+bahman.cell.scores <- bahman.cell.scores %>% 
+  select(-AOI_ID, -sample_ID)
+
+
+# Transform for combining with annotation
+skin.cell.scores <- as.data.frame(t(skin.cell.scores))
+immune.cell.scores <- as.data.frame(t(immune.cell.scores))
+bahman.cell.scores <- as.data.frame(t(bahman.cell.scores))
+
+# Check for cell types with all zeros and remove
+row.sums <- rowSums(skin.cell.scores)
+zero.sum.skin <- rownames(skin.cell.scores[row.sums == 0, ])
+skin.cell.scores.cleaned <- skin.cell.scores[!rownames(skin.cell.scores) %in% zero.sum.skin, ]
+
+row.sums <- rowSums(immune.cell.scores)
+zero.sum.immune <- rownames(immune.cell.scores[row.sums == 0, ])
+immune.cell.scores.cleaned <- immune.cell.scores[!rownames(immune.cell.scores) %in% zero.sum.immune, ]
+
+row.sums <- rowSums(bahman.cell.scores)
+zero.sum.immune <- rownames(bahman.cell.scores[row.sums == 0, ])
+bahman.cell.scores.cleaned <- bahman.cell.scores[!rownames(bahman.cell.scores) %in% zero.sum.immune, ]
+
+
+# Make heatmaps
+skin.heatmap <- make_heatmap(normalized.log.counts.df = skin.cell.scores.cleaned,
+                         annotation.column = spatial.annotation, 
+                         anno.colors = anno.colors, 
+                         cluster.rows = TRUE, 
+                         cluster.columns = TRUE, 
+                         main.title = "Spatial Decon Skin Reference", 
+                         show.rownames = TRUE)
+
+
+immune.heatmap <- make_heatmap(normalized.log.counts.df = immune.cell.scores.cleaned,
+                         annotation.column = spatial.annotation, 
+                         anno.colors = anno.colors, 
+                         cluster.rows = TRUE, 
+                         cluster.columns = TRUE, 
+                         main.title = "Spatial Decon Immune Reference", 
+                         show.rownames = TRUE)
+
+bahman.heatmap <- make_heatmap(normalized.log.counts.df = bahman.cell.scores.cleaned,
+                         annotation.column = spatial.annotation, 
+                         anno.colors = anno.colors, 
+                         cluster.rows = TRUE, 
+                         cluster.columns = TRUE, 
+                         main.title = "Spatial Decon Bahman Reference", 
+                         show.rownames = TRUE)
+
+# Export Heatmaps
+global.export.decon <- TRUE
+export.decon.heatmaps <- global.export.decon
+if(export.decon.heatmaps == TRUE){
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_skin_ref_heatmap.png"), 
+         skin.heatmap, 
+         height = 10, 
+         width = 14)
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_immune_ref_heatmap.png"), 
+         immune.heatmap, 
+         height = 10, 
+         width = 14)
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_bahman_ref_heatmap.png"), 
+         bahman.heatmap, 
+         height = 10, 
+         width = 14)
+  
+}
+
+```
+
+#### Proportion Bar Plots
+
+```{r Deconvolution Proportion Bar Plots}
+#| warning: false
+#| message: false
+
+# Calculate the percentage for each cell type in each AOI
+skin.cell.perc <- sweep(skin.cell.scores.cleaned, 
+                               2, 
+                               colSums(skin.cell.scores.cleaned), 
+                               FUN = "/") * 100
+
+immune.cell.perc <- sweep(immune.cell.scores.cleaned, 
+                               2, 
+                               colSums(immune.cell.scores.cleaned), 
+                               FUN = "/") * 100
+
+bahman.cell.perc <- sweep(bahman.cell.scores.cleaned, 
+                               2, 
+                               colSums(bahman.cell.scores.cleaned), 
+                               FUN = "/") * 100
+
+# Transform for combining with annotation
+skin.cell.perc.transform <- as.data.frame(t(skin.cell.perc))
+skin.cell.perc.transform$AOI_ID <- rownames(skin.cell.perc.transform)
+
+immune.cell.perc.transform <- as.data.frame(t(immune.cell.perc))
+immune.cell.perc.transform$AOI_ID <- rownames(immune.cell.perc.transform)
+
+bahman.cell.perc.transform <- as.data.frame(t(bahman.cell.perc))
+bahman.cell.perc.transform$AOI_ID <- rownames(bahman.cell.perc.transform)
+
+# Add column for mapping to annotation
+spatial.annotation$AOI_ID <- rownames(spatial.annotation)
+
+# Combine the cell type percentage and annotation and melt for use in ggplot
+skin.cell.combine <- merge(skin.cell.perc.transform, spatial.annotation,
+                           by = "AOI_ID")
+skin.cell.melt <- melt(skin.cell.combine, 
+                       id.vars = c("AOI_ID", 
+                                   "region", 
+                                   "segment"), 
+                       variable.name = "cell.type"
+                       )
+
+immune.cell.combine <- merge(immune.cell.perc.transform, spatial.annotation,
+                           by = "AOI_ID")
+immune.cell.melt <- melt(immune.cell.combine, 
+                       id.vars = c("AOI_ID", 
+                                   "region", 
+                                   "segment"), 
+                       variable.name = "cell.type"
+                       )
+
+bahman.cell.combine <- merge(bahman.cell.perc.transform, spatial.annotation,
+                           by = "AOI_ID")
+bahman.cell.melt <- melt(bahman.cell.combine, 
+                       id.vars = c("AOI_ID", 
+                                   "region", 
+                                   "segment"), 
+                       variable.name = "cell.type"
+                       )
+
+# Make the bar plots
+skin.bar.plot <- ggplot(data = skin.cell.melt, aes(x = AOI_ID, 
+                                                   y = value, 
+                                                   fill = cell.type)) + 
+  geom_bar(stat = "identity", color = "black") + 
+  facet_wrap(~region, scales = "free_x") + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
+  
+immune.bar.plot <- ggplot(data = immune.cell.melt, aes(x = AOI_ID, 
+                                                   y = value, 
+                                                   fill = cell.type)) + 
+  geom_bar(stat = "identity", color = "black") + 
+  facet_wrap(~region, scales = "free_x") + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
+
+bahman.bar.plot <- ggplot(data = bahman.cell.melt, aes(x = AOI_ID, 
+                                                   y = value, 
+                                                   fill = cell.type)) + 
+  geom_bar(stat = "identity", color = "black") + 
+  facet_wrap(~region, scales = "free_x") + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
+
+
+# Export Barplots
+export.decon.barplots <- global.export.decon
+if(export.decon.barplots == TRUE){
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_skin_ref_barplot.png"), 
+         skin.bar.plot, 
+         height = 10, 
+         width = 14)
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_immune_ref_barplot.png"), 
+         immune.bar.plot, 
+         height = 10, 
+         width = 14)
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_bahman_ref_barplot.png"), 
+         bahman.bar.plot, 
+         height = 10, 
+         width = 14)
+  
+}
+
+```
+
+#### Boxplots
+
+```{r Deconvolution Boxplots}
+#| warning: false
+#| message: false
+
+tumor.vessel.comparison <- list(
+  c("tumor", "vessel"))
+
+tumor.immune.comparison <- list(
+  c("tumor", "immune"))
+
+vessel.immune.comparison <- list(
+  c("vessel", "immune"))
+
+skin.box.plot <- ggplot(data = skin.cell.melt, aes(x = region, 
+                                                   y = value, 
+                                                   fill = segment)) + 
+  geom_boxplot(color = "black") + 
+  facet_wrap(~cell.type, scales = "free_x") + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank()
+  ) + 
+  labs(y = "Percentage of Total") + 
+  stat_compare_means(comparisons = tumor.vessel.comparison, 
+                     label = "p.signif", 
+                     label.y = 20) + 
+  stat_compare_means(comparisons = tumor.immune.comparison, 
+                     label = "p.signif", 
+                     label.y = 40) + 
+  stat_compare_means(comparisons = vessel.immune.comparison, 
+                     label = "p.signif", 
+                     label.y = 30)
+
+immune.box.plot <- ggplot(data = immune.cell.melt, aes(x = region, 
+                                                   y = value, 
+                                                   fill = segment)) + 
+  geom_boxplot(color = "black") + 
+  facet_wrap(~cell.type, scales = "free_x") + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank()
+  ) + 
+  labs(y = "Percentage of Total") + 
+  stat_compare_means(comparisons = tumor.vessel.comparison, 
+                     label = "p.signif", 
+                     label.y = 20) + 
+  stat_compare_means(comparisons = tumor.immune.comparison, 
+                     label = "p.signif", 
+                     label.y = 40) + 
+  stat_compare_means(comparisons = vessel.immune.comparison, 
+                     label = "p.signif", 
+                     label.y = 30)
+
+bahman.box.plot <- ggplot(data = bahman.cell.melt, aes(x = region, 
+                                                   y = value, 
+                                                   fill = segment)) + 
+  geom_boxplot(color = "black") + 
+  facet_wrap(~cell.type, scales = "free_x") + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank()
+  ) + 
+  labs(y = "Percentage of Total") + 
+  stat_compare_means(comparisons = tumor.vessel.comparison, 
+                     label = "p.signif", 
+                     label.y = 20) + 
+  stat_compare_means(comparisons = tumor.immune.comparison, 
+                     label = "p.signif", 
+                     label.y = 40) + 
+  stat_compare_means(comparisons = vessel.immune.comparison, 
+                     label = "p.signif", 
+                     label.y = 30)
+
+# Export Boxplots
+export.decon.boxplots <- global.export.decon
+if(export.decon.boxplots == TRUE){
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_skin_ref_region_boxplot.png"), 
+         skin.box.plot, 
+         height = 10, 
+         width = 14)
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_immune_ref_region_boxplot.png"), 
+         immune.box.plot, 
+         height = 10, 
+         width = 14)
+  
+  ggsave(paste0(results.folder, 
+                run.folder, 
+                "spatial_decon/spatial_decon_bahman_ref_region_boxplot.png"), 
+         bahman.box.plot, 
+         height = 10, 
+         width = 14)
+  
+}
+
+```

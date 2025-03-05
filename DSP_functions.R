@@ -458,7 +458,10 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
                          row.gaps = NULL, 
                          column.gaps = NULL, 
                          show.rownames = FALSE, 
-                         show.colnames = FALSE){
+                         show.colnames = FALSE, 
+                         min.genes.to.display = 2, 
+                         max.genes.to.display = 500, 
+                         font.size.row = 4){
   
   
   
@@ -468,11 +471,9 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
     
   }
   
-  if (top.variable == TRUE){
+  #if (top.variable == TRUE){
     
-    
-    
-  }
+  #}
   
   # Filter genes by top DEGs, if applicable
   if(top.degs == TRUE){ 
@@ -489,13 +490,20 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
       
       degs.df <- degs.df %>% 
         filter(.data[[logfc.column]] > logfc.cutoff | .data[[logfc.column]] < -(logfc.cutoff))
-      
     }
     
-    main.title = "DEGs with adj p-val < 0.05"
+    # Use DEGs meeting adj p-val and logfc cutoffs
+    if(length(rownames(degs.df)) >= min.genes.to.display){
+      
+      # Set up main title with logfc cutoff
+      main.title <- paste0(main.title, " [logfc (+-", logfc.cutoff, ")")
+      
+      main.title <- paste0(main.title, " adj p-val (<0.05)]")
+      
+    }    
     
-    # Revert to only p-value correction if no DEGs with logFC cutoff
-    if(length(rownames(degs.df)) < 2){
+    # Revert to adj p-val cutoff and no logfc cutoff
+    if(length(rownames(degs.df)) < min.genes.to.display){
       
       degs.df <- de.results %>% 
         filter(padj < 0.05) %>% 
@@ -503,10 +511,31 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
       
       print("Not enough DEGs with listed logFC cutoff, reverting to all DEGs with adj p-value < 0.05")
       
+      # Set up main title with logfc cutoff
+      main.title <- paste0(main.title, " [no logfc cutoff")
+      
+      main.title <- paste0(main.title, " adj p-val (<0.05)]")
+      
     }
     
-    # Revert to non-adjusted p-value if no DEGs with adj p-val cutoff
-    if(length(rownames(degs.df)) < 2){
+    # Revert to nonadj p-val cutoff and logfc cutoff
+    if(length(rownames(degs.df)) < min.genes.to.display){
+      
+      degs.df <- de.results %>% 
+        filter(pval < 0.05) %>% 
+        arrange(desc(padj)) %>% 
+        filter(.data[[logfc.column]] > logfc.cutoff | .data[[logfc.column]] < -(logfc.cutoff))
+      
+      print("Not enough DEGs with adj p-val < 0.05, reverting to all DEGs with p-value < 0.05")
+      
+      main.title <- paste0(main.title, " [logfc (+-", logfc.cutoff, ")")
+      
+      main.title <- paste0(main.title, " p-val (<0.05, no adj)]")
+      
+    }
+    
+    # Revert to only p-val if no DEGs with p-val cutoff and logfc cutoff
+    if(length(rownames(degs.df)) < min.genes.to.display){
       
       degs.df <- de.results %>% 
         filter(pval < 0.05) %>% 
@@ -514,13 +543,16 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
       
       print("Not enough DEGs with adj p-val < 0.05, reverting to NON-adjusted p-value < 0.05")
       
-      main.title = "DEGs with p-val < 0.05 (NOT adjusted)"
+      # Set up main title with logfc cutoff
+      main.title <- paste0(main.title, " [no logfc cutoff ")
+      
+      main.title <- paste0(main.title, " p-val (<0.05, no adj)]")
       
     }
     
     # If there are more then 500 DEGs, trim down to top 500
-    if(length(rownames(degs.df)) > 500){
-      degs.df <- degs.df %>% slice(1:500)
+    if(length(rownames(degs.df)) > max.genes.to.display){
+      degs.df <- degs.df %>% slice(1:max.genes.to.display)
     }
     
     # Grab the list of DEGs
@@ -533,6 +565,26 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
   } else {
     
     counts <- normalized.log.counts.df
+    
+  }
+  
+  # Arrange by annotations if no column clustering
+  if(cluster.columns == FALSE){
+    
+    # First arrange the annotation by the annotation groups
+    anno.col.names <- colnames(annotation.column)
+    
+    for(col in anno.col.names){
+      
+      #annotation.column[[col]] <- as.factor(annotation.column[[col]])
+      
+      annotation.column <- annotation.column %>% 
+        arrange(.data[[col]])
+      
+    }
+    
+    # Next match the counts file to the row order of the annotation
+    counts <- counts[, rownames(annotation.column), drop = FALSE]
     
   }
   
@@ -553,7 +605,7 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
                            annotation_colors = anno.colors, 
                            gaps_row = row.gaps, 
                            gaps_col = column.gaps, 
-                           fontsize_row = 4)
+                           fontsize_row = font.size.row)
   
   
   
