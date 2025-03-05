@@ -7,9 +7,9 @@ editor: visual
 #css: "qc_report_style.css"
 
 params:
-  data.folder: "$path_to_folder"
-  results.folder: "$path_to_folder"
-  run.folder: "$path_to_folder"
+  data.folder: "test_datasets/Human_Kidney/"
+  results.folder: "test_datasets/Human_Kidney/results/"
+  run.folder: "qc_report_dev_January2025/"
 ---
 
 ## Load Libraries
@@ -52,26 +52,25 @@ source("DSP_QC_functions.R")
 
 # Input file parameters
 
-pkc.file.name <- "Hs_R_NGS_WTA_v1.0.pkc"
+pkc.file.name <- "TAP_H_WTA_v1.0.pkc"
 pkc.file.path <- paste0(params$data.folder, pkc.file.name)
 
-annotation.file.name <- "$annotation.file.xlsx"
+annotation.file.name <- "test_annotation_kidney.xlsx"
 annotation.file.path <- paste0(params$data.folder, annotation.file.name)
 
-dcc.files <- list.files(file.path(paste0(params$data.folder, "dcc")),
+dcc.files <- list.files(file.path(paste0(params$data.folder, "downloaded/dccs")),
   pattern = ".dcc$",
   full.names = TRUE,
   recursive = TRUE
 )
 
 # Annotation parameters
-annotation.sheet.name <- "annotation"
+annotation.sheet.name <- "Template"
 sample.id.field.name <- "Sample_ID"
-roi.field.name <- "ROI"
+roi.field.name <- "roi"
 panel.field.name <- "panel"
-slide.field.name <- "slide name"
 class.field.name <- "class"
-region.field.name <- "Region"
+region.field.name <- "region"
 segment.field.name <- "segment"
 area.field.name <- "area"
 nuclei.field.name <- "nuclei"
@@ -86,8 +85,7 @@ init.object <- initialize_object(dcc.files = dcc.files,
                             annotation.sheet.name = annotation.sheet.name,
                             sample.id.field.name = sample.id.field.name,
                             roi.field.name = roi.field.name,
-                            panel.field.name = panel.field.name,
-                            slide.field.name = slide.field.name, 
+                            panel.field.name = panel.field.name, 
                             class.field.name = class.field.name, 
                             region.field.name = region.field.name, 
                             segment.field.name = segment.field.name,
