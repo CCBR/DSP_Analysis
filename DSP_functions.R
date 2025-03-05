@@ -3,9 +3,46 @@
 # Required libraries for functions
 library(pheatmap)
 
+subset_counts_for_lmm <- function(counts, 
+                                   annotation, 
+                                   subset.list){ 
+  
+  subset.counts <- counts
+  subset.annotation <- annotation
+  
+  # Subset the object based on the given annotations
+  for(column in names(subset.list)){ 
+    
+    subset.annotation <- subset.annotation %>% 
+      filter(.[[column]] %in% subset.list[[column]])
+    
+    subset.IDs <- subset.annotation$Sample_ID
+    
+    subset.columns <- c("gene", subset.IDs)
+    
+    subset.counts <- subset.counts %>% 
+      select(all_of(subset.columns))
+    
+    # Factor the columns with relevant annotations
+    subset.annotation[[column]] <- factor(subset.annotation[[column]])
+    
+  }
+  
+  # Factor the slide column
+  subset.annotation[["slide_name"]] <- factor(subset.annotation[["slide_name"]])
+  
+  # Create log2 counts
+  subset.counts.log2 <-  subset.counts %>%
+    mutate(across(where(is.numeric), log2))
+  
+  return(list("subset.counts" = subset.counts, 
+              "subset.log.counts" = subset.counts.log2, 
+              "subset.annotation" = subset.annotation))
+  
+}
 
-subset_for_lmm <- function(object, 
-                           subset.list){ 
+subset_object_for_lmm <- function(object, 
+                                  subset.list){ 
   
   # Set up the object to subset
   subset.object <- object
@@ -185,16 +222,10 @@ make_volcano <- function(lmm.results,
                          x.axis.title, 
                          fc.limit = 1, 
                          pos.label.limit = 1, 
-                         neg.label.limit = -1){ 
+                         neg.label.limit = -1, 
+                         custom.gene.labels = NULL){ 
   
   ## Make a volcano plot for the comparison
-  
-  # Define the columns for the volcano plot data
-  #logfc.column.name <- paste0("logFC_", comparison)
-  #padj.column.name <- paste0("adj.pval", comparison)
-  
-  #results$logfc <- results[[logfc.column.name]]
-  #results$padj <- results[[padj.column.name]]
   
   # Create a column for direction of DEGs
   lmm.results$de_direction <- "NONE"
@@ -211,6 +242,21 @@ make_volcano <- function(lmm.results,
                                  NA
                                  )
   
+  # Create a label for DEGs
+  if(is.null(custom.gene.labels)){
+    
+    lmm.results$deglabel <- ifelse(lmm.results$de_direction == "NONE", 
+                                   NA, 
+                                   lmm.results$gene)
+    
+  } else {
+    
+    lmm.results$deglabel <- ifelse(lmm.results$gene %in% custom.gene.labels, 
+                                   lmm.results$gene, 
+                                   NA)
+    
+  }
+  
   # Compute the scale for the volcano x-axis
   log2.scale <- max(abs(lmm.results$logfc))
   
@@ -218,29 +264,85 @@ make_volcano <- function(lmm.results,
   contrast.level.colors <- c("steelblue4", "grey", "violetred4")
   names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
   
-  # Make the volcano plot
-  volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+  # Make the volcano plot based on custom gene labels
+  if(is.null(custom.gene.labels)){
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
+    
+    volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+                                                   y = -log10(padj), 
+                                                   col = de_direction, 
+                                                   label = deglabel)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      xlim(-7.5, 7.5) + 
+      labs(x = x.axis.title,
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors) + 
+      geom_text_repel(max.overlaps = Inf) + 
+      xlim(-log2.scale-1, log2.scale+1) + 
+      theme(plot.title = element_text(hjust = 0.5))
+    
+  } else {
+    
+    # Label the custom genes depending on significance
+    lmm.results <- lmm.results %>% 
+      mutate(custom.label = ifelse(!is.na(deglabel) & de_direction == "NONE", 
+                                   "BLACK", 
+                                   ifelse(!is.na(deglabel) & de_direction != "NONE", 
+                                          de_direction, 
+                                          "NONE")))
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4", "black")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP", "BLACK")
+    
+    lmm.results.labeled <- lmm.results %>%
+      filter(custom.label != "NONE")
+    
+    lmm.results.unlabeled <- lmm.results %>% 
+      filter(custom.label == "NONE")
+    
+    
+    volcano.plot <- ggplot() + 
+      geom_point(data = lmm.results.unlabeled, aes(x = logfc, 
+                                                   y = -log10(padj), 
+                                                   col = custom.label, 
+                                                   alpha = 0.5)) + 
+      geom_point(data = lmm.results.labeled, aes(x = logfc, 
                                                  y = -log10(padj), 
-                                                 col = de_direction, 
-                                                 label = deglabel)) +
-    geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
-    geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
-    xlim(-7.5, 7.5) + 
-    labs(x = x.axis.title,
-         y = "-log10 adjusted p-value", 
-         title = title) + 
-    geom_point(size = 2) +
-    scale_color_manual(legend.title, 
-                       values = contrast.level.colors) + 
-    geom_text_repel(max.overlaps = Inf) + 
-    xlim(-log2.scale-1, log2.scale+1) + 
-    theme(plot.title = element_text(hjust = 0.5))
+                                                 col = custom.label, 
+                                                 alpha = 1)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      xlim(-7.5, 7.5) + 
+      labs(x = x.axis.title,
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors, 
+                         breaks = c("DOWN", "UP")) + 
+      geom_text_repel(data = lmm.results.labeled,
+                      aes(x = logfc, 
+                          y = -log10(padj), 
+                          label = deglabel, 
+                          col = custom.label), 
+                      max.overlaps = Inf, 
+                      size = 6, 
+                      show.legend = FALSE) + 
+      xlim(-log2.scale-1, log2.scale+1) + 
+      theme(plot.title = element_text(hjust = 0.5)) + 
+      scale_alpha_identity(guide = "none")
+    
+  }
   
   return(list("volcano.plot" = volcano.plot))
   
 }
-
-region.types <- c("tumor", "vessel")
 
 # Set up the MA plot table
 make_MA <- function(contrast.field, 
@@ -341,20 +443,36 @@ run_GSEA <- function(){
   
 }
 
-make_heatmap <- function(normalized.log.counts.df, 
-                         de.results, 
-                         top.degs, 
+make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts, 
+                         de.results = NULL, 
+                         top.degs = FALSE, 
+                         top.variable = FALSE, 
+                         logfc.column = NULL, 
+                         logfc.cutoff = NULL, 
                          annotation.column, 
                          annotation.row = NULL, 
                          anno.colors, 
-                         cluster.rows = FALSE, 
-                         cluster.columns = FALSE, 
+                         cluster.rows = TRUE, 
+                         cluster.columns = TRUE, 
                          main.title, 
                          row.gaps = NULL, 
                          column.gaps = NULL, 
                          show.rownames = FALSE, 
                          show.colnames = FALSE){
   
+  
+  
+  if(top.degs == TRUE & top.variable == TRUE){ 
+  
+    stop("Set only one of top.degs or top.variable to TRUE, not both")  
+    
+  }
+  
+  if (top.variable == TRUE){
+    
+    
+    
+  }
   
   # Filter genes by top DEGs, if applicable
   if(top.degs == TRUE){ 
@@ -364,13 +482,46 @@ make_heatmap <- function(normalized.log.counts.df,
       filter(padj < 0.05) %>% 
       arrange(desc(padj))
     
+    # Arrange by log FC
+    degs.df <- degs.df %>% arrange(desc(logfc))
+    
+    if(!is.null(logfc.cutoff)){
+      
+      degs.df <- degs.df %>% 
+        filter(.data[[logfc.column]] > logfc.cutoff | .data[[logfc.column]] < -(logfc.cutoff))
+      
+    }
+    
+    main.title = "DEGs with adj p-val < 0.05"
+    
+    # Revert to only p-value correction if no DEGs with logFC cutoff
+    if(length(rownames(degs.df)) < 2){
+      
+      degs.df <- de.results %>% 
+        filter(padj < 0.05) %>% 
+        arrange(desc(padj))
+      
+      print("Not enough DEGs with listed logFC cutoff, reverting to all DEGs with adj p-value < 0.05")
+      
+    }
+    
+    # Revert to non-adjusted p-value if no DEGs with adj p-val cutoff
+    if(length(rownames(degs.df)) < 2){
+      
+      degs.df <- de.results %>% 
+        filter(pval < 0.05) %>% 
+        arrange(desc(pval))
+      
+      print("Not enough DEGs with adj p-val < 0.05, reverting to NON-adjusted p-value < 0.05")
+      
+      main.title = "DEGs with p-val < 0.05 (NOT adjusted)"
+      
+    }
+    
     # If there are more then 500 DEGs, trim down to top 500
     if(length(rownames(degs.df)) > 500){
       degs.df <- degs.df %>% slice(1:500)
     }
-    
-    # Arrange by log FC
-    degs.df <- degs.df %>% arrange(desc(logfc))
     
     # Grab the list of DEGs
     degs.list <- degs.df$gene
@@ -405,12 +556,70 @@ make_heatmap <- function(normalized.log.counts.df,
                            fontsize_row = 4)
   
   
+  
   return(heatmap.plot)
   
 }
 
 
 calculate_signal2noise <- function(){
+  
+  
+}
+
+
+normalize_counts <- function() {}
+
+gsea_preranked_list <- function(contrast.field, 
+                                contrast.levels, 
+                                annotation, 
+                                log.counts){
+  
+  # Gather the signal to noise ratio for GSEA ranking
+  # Default method for ranking genes from GSEA manual:
+  # https://www.gsea-msigdb.org/gsea/doc/GSEAUserGuideTEXT.htm#_Metrics_for_Ranking
+  
+  # Contrast level A is the "condition" (positive when calculating fold change)
+  contrast.A.annotation <- annotation %>% 
+    filter(!!sym(contrast.field) == contrast.levels[1])
+  
+  contrast.A.sampleIDs <- rownames(contrast.A.annotation)
+  
+  contrast.A.counts <- as.data.frame(log.counts) %>% 
+    select(all_of(contrast.A.sampleIDs))
+  
+  contrast.A.counts$gene <- rownames(contrast.A.counts)
+  
+  # Contrast level B is the "reference" (negative when calculating fold change)
+  
+  contrast.B.annotation <- annotation %>% 
+    filter(!!sym(contrast.field) == contrast.levels[2])
+  
+  contrast.B.sampleIDs <- rownames(contrast.B.annotation)
+  
+  contrast.B.counts <- as.data.frame(log.counts) %>% 
+    select(all_of(contrast.B.sampleIDs))
+  
+  contrast.B.counts$gene <- rownames(contrast.B.counts)
+  
+  # Add a column to each contrast level for the mean and standard deviation
+  contrast.A.counts <- contrast.A.counts %>% 
+    mutate(mean.A = rowMeans(select_if(., is.numeric))) %>%  
+    mutate(stdev.A = apply(select_if(., is.numeric), 1, sd))
+  
+  contrast.B.counts <- contrast.B.counts %>% 
+    mutate(mean.B = rowMeans(select_if(., is.numeric))) %>%  
+    mutate(stdev.B = apply(select_if(., is.numeric), 1, sd))
+  
+  GSEA.preanked.df <- merge(contrast.A.counts, contrast.B.counts, by = "gene")
+  
+  GSEA.preanked.df <- GSEA.preanked.df %>% 
+    mutate(signal2noise = (mean.A - mean.B)/(stdev.A + stdev.B)) %>% 
+    arrange(desc(signal2noise)) %>% 
+    select(c(gene, mean.A, mean.B, stdev.A, stdev.B, signal2noise))
+  
+  return(GSEA.preanked.df)
+  
   
   
 }
