@@ -570,8 +570,8 @@ gene_detection <- function(object,
                   function(x) {sum(fData(object)$DetectionRate >= x)}))
   
   # Set up the rate
-  detect.loss$Percent_of_Panel <- detect.loss$Number / nrow(fData(object.segment.filtered))
-  rownames(plot.detect) <- detect.loss$Freq
+  detect.loss$Percent_of_Panel <- detect.loss$Number / nrow(fData(object))
+  rownames(detect.loss) <- detect.loss$Freq
   
   # Create the detection loss barplot
   detect.loss.plot <- ggplot(detect.loss, aes(x = as.factor(Freq), 
@@ -1036,7 +1036,7 @@ nuclei_plot <- function(annotation,
   # Create the nuclei count boxplots
   nuclei.boxplot <- ggplot(annotation, aes(x = roi,
                                                y = nuclei,
-                                               color = !!sym(annotation.to.color))) + 
+                                               color = !!sym(color))) + 
     geom_boxplot(notch = FALSE) + 
     ggtitle(paste0("Nuclei count per AOI")) +
     scale_y_continuous(labels = scales::comma) + 
