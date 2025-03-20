@@ -1007,11 +1007,12 @@ nuclei_plot <- function(annotation,
                         color, 
                         facet, 
                         x.axis, 
-                        order.by.ROI.num = FALSE){
+                        order.by.ROI.num = FALSE, 
+                        nuclei.field.name){
   
   # Set the upper and lower y limits of the plot (log2 counts)
-  y.upper.limit <- max(annotation$nuclei) + 10
-  y.lower.limit <- min(annotation$nuclei) - 10
+  y.upper.limit <- max(annotation[[nuclei.field.name]]) + 10
+  y.lower.limit <- min(annotation[[nuclei.field.name]]) - 10
   
   if(order.by.ROI.num == TRUE){
     
@@ -1022,10 +1023,10 @@ nuclei_plot <- function(annotation,
     
   } else {
     
-    # Order by facet and color annotations
+    #Order by facet and color annotations
     annotation <- annotation %>%
-      arrange(.data[[color]]) %>% 
-      arrange(.data[[facet]])
+    arrange(.data[[color]]) %>% 
+    arrange(.data[[facet]])
     
   }
   
@@ -1034,9 +1035,9 @@ nuclei_plot <- function(annotation,
                                  levels = unique(annotation[[x.axis]]))
   
   # Create the nuclei count boxplots
-  nuclei.boxplot <- ggplot(annotation, aes(x = roi,
-                                               y = nuclei,
-                                               color = !!sym(annotation.to.color))) + 
+  nuclei.boxplot <- ggplot(annotation, aes(x = !!sym(x.axis),
+                                           y = !!sym(nuclei.field.name),
+                                           color = !!sym(color))) + 
     geom_boxplot(notch = FALSE) + 
     ggtitle(paste0("Nuclei count per AOI")) +
     scale_y_continuous(labels = scales::comma) + 

@@ -1,16 +1,19 @@
 ---
 title: "DSP Analysis QC Report - nCounter Protein for Rits Sarkar"
+subtitle: "Tumor AOIs Only"
 format:
   html:
     code-fold: true
+    fig-width: 14
+    fig-height: 10
 editor: visual
 #css: "qc_report_style.css"
 
 params:
   dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
-  data.folder: "/Users/cauleyes/CPTR/Rits_Sarkar/Processed_Data/"
+  data.folder: "/Users/cauleyes/CPTR/Rits_Sarkar/Processed_Data/Tumor_Samples/"
   results.folder: "QC/"
-  run.folder: "Initial_Run_March_17_2025/"
+  run.folder: "Tumor_Only_Run_March_19_2025/"
 ---
 
 ## Load Libraries
@@ -58,13 +61,13 @@ source(paste0(params$dsp.analysis.folder, "DSP_QC_functions.R"))
 # Load the counts files
 counts.list <- list()
 counts.list[["raw"]] <- read_excel(paste0(params$data.folder, 
-                                          "Counts/Raw_counts.xlsx"))
+                                          "Counts/Tumor_Only_Raw_Counts.xlsx"))
 counts.list[["filtered"]] <- read_excel(paste0(params$data.folder, 
-                                               "Counts/Filtering_counts.xlsx"))
+                                               "Counts/Tumor_Only_Filter_Counts.xlsx"))
 counts.list[["norm_hk"]] <- read_excel(paste0(params$data.folder, 
-                                              "Counts/Normalization_HK_counts.xlsx"))
+                                              "Counts/Tumor_Only_HK_Normalization_Counts.xlsx"))
 counts.list[["norm_neg"]] <- read_excel(paste0(params$data.folder, 
-                                               "Counts/Normalization_Negative_counts.xlsx"))
+                                               "Counts/Tumor_Only_Negative_Normalization_Counts.xlsx"))
 
 # Correct any bad charcaters in column names
 for(type in names(counts.list)){
@@ -76,10 +79,10 @@ for(type in names(counts.list)){
 
 # Load the annotations
 annotation <- read_excel(paste0(params$data.folder, 
-                         "Annotation/Annotation_for_Rits.xlsx"))
+                         "Annotation/Tumor_Only_Annotation_for_Rits.xlsx"))
 
 qc.info <- read_excel(paste0(params$data.folder, 
-                         "Annotation/Segment_Summary.xlsx"))
+                         "Annotation/Tumor_Only_Segment_Summary.xlsx"))
 
 
 # Create an ID for mapping the annotation and qc info
@@ -108,9 +111,7 @@ annotation$slide_name <- gsub(" ", "", annotation$slide_name)
 
 ### AOI Summary
 
-@fig-aoibarplot shows the total AOI counts per annotation
-
-```{r AOI Count Bar Plot, fig.width=12, fig.height=8}
+```{r AOI Count Bar Plot}
 #| label: fig-aoibarplot
 #| fig-cap: "AOI Count Bar Plot"
 #| warning: false
@@ -156,12 +157,45 @@ annotation.melt <- pivot_longer(annotation.mat,
                             names_to = "annotation_column", 
                             values_to = "annotation_value")
 
+# Create a barplot with no number labels
 annotation.barplot <- ggplot(annotation.melt, aes(x = annotation_value, 
                                                   y = n)) + 
   geom_bar(stat = 'identity') + 
   facet_wrap(~ annotation_column, scales = "free_x") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   labs(x = NULL, y = "# of AOIs")
+
+# Remove bad charcaters in annotation
+colnames(annotation.mat) <- gsub(" ", "", colnames(annotation.mat))
+colnames(annotation.mat) <- gsub("/", "_", colnames(annotation.mat))
+
+# Create barplots with number labels
+annotation.barplot.slide <- ggplot(annotation.mat, aes(x = SegmentTags_classifier, 
+                                                  y = n)) + 
+  geom_bar(stat = 'identity') + 
+  facet_wrap(~ slide_name, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = NULL, y = "# of AOIs") + 
+  geom_text(aes(label = n), vjust = -1, size = 3.5)
+
+# Create the barplot df with no slide
+annotation.mat.total <- annotation.mat %>% 
+  select(-slide_name) %>% 
+  group_by(SegmentTags_classifier, TissueType) %>%
+  summarize(n = sum(n), .groups = 'drop')
+
+annotation.barplot.total <- ggplot(annotation.mat.total, aes(x = SegmentTags_classifier, 
+                                                  y = n)) + 
+  geom_bar(stat = 'identity') + 
+  facet_wrap(~ TissueType, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = NULL, y = "# of AOIs") + 
+  geom_text(aes(label = n), color="black", size=3.5, vjust = -1)
+
+
+print(annotation.barplot)
+print(annotation.barplot.slide)
+print(annotation.barplot.total)
 ```
 
 ### Summary of QC for AOIs and Probes
@@ -219,6 +253,7 @@ nuclei.plot <- nuclei_plot(annotation = qc.annotation,
                            order.by.ROI.num = FALSE, 
                            nuclei.field.name = 'Nucleicount')
 
+print(nuclei.plot)
 
 ```
 
@@ -306,6 +341,9 @@ print(norm_neg.target.boxplot)
 
 # Gather a list of targets that were filtered out
 filtered.targets <- setdiff(counts.list$raw$Target, counts.list$filtered$Target)
+
+
+print("The following targets have been removed from filtering: ")
 print(filtered.targets)
 ```
 
@@ -393,6 +431,9 @@ tumor.immune.boxplot.faceted <- ggplot(tumor.compare.melt, aes(x = TissueSegment
                      label = "p.signif", 
                      label.y = 6, 
                      color = "darkred")
+
+print(tumor.immune.boxplot)
+print(tumor.immune.boxplot.faceted)
 
 ```
 
