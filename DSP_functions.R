@@ -5,6 +5,7 @@ library(pheatmap)
 library(ggplot2)
 library(dplyr)
 library(ggrepel)
+library(cowplot)
 
 subset_counts_for_lmm <- function(counts, 
                                    annotation, 
@@ -702,6 +703,9 @@ make_dual_volcano <- function(lmm.results.1,
     lmm.results$de_direction[lmm.results$padj < 0.05 & 
                                lmm.results$logfc < -fc.limit] <- "DOWN"
     
+    #lmm.results$de_direction <- factor(lmm.results$de_direction, 
+    #                                   levels = "UP", "NONE", "DOWN")
+    
     # Create a label for DEGs based on label limits
     lmm.results$deglabel <- ifelse((lmm.results$logfc > pos.label.limit | 
                                       lmm.results$logfc < neg.label.limit) & 
@@ -733,8 +737,10 @@ make_dual_volcano <- function(lmm.results.1,
   y.axis.breaks <- seq(-pval.scale, pval.scale, by = 1)
   
   # Establish the color scheme for the volcano plot
-  contrast.level.colors <- c("steelblue4", "grey", "violetred4")
-  names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
+  contrast.level.colors <- c("violetred4", "grey", "steelblue4")
+  names(contrast.level.colors) <- c("UP", "NONE", "DOWN")
+  
+  
   
   # Make the plot
   dual.volcano.plot <- ggplot(data = lmm.results.combine, 
@@ -743,11 +749,15 @@ make_dual_volcano <- function(lmm.results.1,
                                   col = de_direction, 
                                   label = deglabel)) +
     geom_vline(xintercept = c(-fc.limit, fc.limit), 
-               col = "gray", 
-               linetype = 'dashed') +
-    geom_hline(yintercept = c(-log10(0.05), -(-log10(0.05))), 
-               col = "gray", 
+               col = "darkgray", 
                linetype = 'dashed') + 
+    geom_vline(xintercept = 0, 
+               col = "black") + 
+    geom_hline(yintercept = c(-log10(0.05), -(-log10(0.05))), 
+               col = "darkgray", 
+               linetype = 'dashed') + 
+    geom_hline(yintercept = 0, 
+               col = "black") + 
     xlim(-log2.scale - 1, log2.scale + 1) + 
     scale_y_continuous(
       limits = c(-pval.scale, pval.scale),
@@ -756,10 +766,19 @@ make_dual_volcano <- function(lmm.results.1,
     labs(x = x.axis.title,
          y = "-log10 adjusted p-value", 
          title = title) + 
-    geom_point(size = 2) +
+    geom_point(size = 2, alpha = 0.7) +
     scale_color_manual(legend.title, 
                        values = contrast.level.colors) + 
-    geom_text_repel(max.overlaps = Inf) + 
-    theme(plot.title = element_text(hjust = 0.5))
+    geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+    theme(plot.title = element_text(hjust = 0.5), 
+          ) + 
+    theme_linedraw()
+  
+  #dual.volcano.labeled <- ggdraw() +
+  #  draw_plot(dual.volcano.plot, x = 0.02, width = 0.95) +  # Move the plot slightly right
+  #  draw_text(lmm.results.1.label, x = 0.01, y = 0.6, angle = 90, size = 14, hjust = 0) +
+  #  draw_text(lmm.results.2.label, x = 0.01, y = 0.2, angle = 90, size = 14, hjust = 0)
+  
+  return(dual.volcano.plot)
 
 }
