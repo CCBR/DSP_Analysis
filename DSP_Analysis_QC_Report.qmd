@@ -7,6 +7,7 @@ editor: visual
 #css: "qc_report_style.css"
 
 params:
+  dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
   data.folder: "test_datasets/Human_Kidney/"
   results.folder: "test_datasets/Human_Kidney/results/"
   run.folder: "qc_report_dev_January2025/"
@@ -187,11 +188,15 @@ qc.output$plot$neg.plot
 
 AOIs that have been flagged with the given QC parameters
 
+aoi.flag.table \<- aoi_flag_table(aoi.flags = qc.output\$segment.flags)
+
+print(aoi.flag.table)
+
 ```{r AOI Flags}
 
 aoi.flag.table <- aoi_flag_table(aoi.flags = qc.output$segment.flags)
 
-print(aoi.flag.table)
+aoi.flag.table
 
 ```
 
@@ -205,9 +210,9 @@ Probes that have been flagged as either local or global outliers.
 probe.flag.output <- probe_flag_table(probe.flags = qc.output$probe.flags, 
                                       object = qc.output$object)
 
-print(probe.flag.summary)
+probe.flag.summary
 
-print(probe.flags.table)
+probe.flags.table
 
 ```
 
@@ -231,7 +236,7 @@ loq.detection.output <- loq_detection(object = qc.output$object,
 
 aoi.detection <- aoi_detection(object = loq.detection.output$object)
 
-print(gene.detection.per.aoi$detection.bar.plot)
+print(aoi.detection$detection.bar.plot)
 
 ```
 
@@ -241,7 +246,7 @@ AOIs in the low detection bin of 1-5%
 #| warning: false
 #| message: false
 
-print(gene.detection.per.aoi$low.detection.table)
+aoi.detection$low.detection.table
 
 ```
 
@@ -276,7 +281,7 @@ aoi.filtered.out.table <- aoi.filtered.out %>%
   tab_header(title = "AOIs Filtered Out", 
              subtitle = paste0(aoi.gene.rate.cutoff, "% Cutoff"), preheader = NULL)
 
-print(aoi.filtered.out.table)
+aoi.filtered.out.table
 
 ```
 
@@ -331,9 +336,9 @@ goi.df <- data.frame(Gene = goi,
                      DetectionRate = fData(loq.detection.output.aoi.filtered$object)[goi, "DetectionRate"])
 
 # Print the GOI table
-goi.table <- goi.table %>% gt()
+goi.table <- goi.df %>% gt()
 
-print(goi.table)
+goi.table
 ```
 
 @fig-DetectionPerGeneLoss shows the loss of percentage of all AOIs individual genes are detected within
@@ -464,6 +469,14 @@ q3.normalization.output <- geomxNorm(
 neg.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
+
+
+# Quantile normalization
+quantile.normalization.counts <- normalize.quantiles(object.gene.filtered@assayData$exprs)
+
+dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayData$exprs)
+
+
     
 
 export.norm.object <- FALSE 
