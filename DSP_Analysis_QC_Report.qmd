@@ -7,6 +7,7 @@ editor: visual
 #css: "qc_report_style.css"
 
 params:
+  dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
   data.folder: "test_datasets/Human_Kidney/"
   results.folder: "test_datasets/Human_Kidney/"
   run.folder: "qc_report/"
@@ -188,11 +189,15 @@ qc.output$plot$neg.plot
 
 AOIs that have been flagged with the given QC parameters
 
+aoi.flag.table \<- aoi_flag_table(aoi.flags = qc.output\$segment.flags)
+
+print(aoi.flag.table)
+
 ```{r AOI Flags}
 
 aoi.flag.table <- aoi_flag_table(aoi.flags = qc.output$segment.flags)
 
-print(aoi.flag.table)
+aoi.flag.table
 
 ```
 
@@ -209,6 +214,7 @@ probe.flag.output <- probe_flag_table(probe.flags = qc.output$probe.flags,
 print(probe.flag.output$probe.flag.summary)
 
 print(probe.flag.output$probe.flags.table)
+
 
 ```
 
@@ -279,7 +285,7 @@ aoi.filtered.out.table <- aoi.filtered.out %>%
   tab_header(title = "AOIs Filtered Out", 
              subtitle = paste0(aoi.gene.rate.cutoff, "% Cutoff"), preheader = NULL)
 
-print(aoi.filtered.out.table)
+aoi.filtered.out.table
 
 ```
 
@@ -336,7 +342,7 @@ goi.df <- data.frame(Gene = goi,
 # Print the GOI table
 goi.table <- goi.df %>% gt()
 
-print(goi.table)
+goi.table
 ```
 
 @fig-DetectionPerGeneLoss shows the loss of percentage of all AOIs individual genes are detected within
@@ -471,6 +477,14 @@ q3.normalization.output <- geomxNorm(
 neg.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
+
+
+# Quantile normalization
+quantile.normalization.counts <- normalize.quantiles(object.gene.filtered@assayData$exprs)
+
+dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayData$exprs)
+
+
     
 
 export.norm.object <- FALSE 

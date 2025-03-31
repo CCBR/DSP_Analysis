@@ -570,8 +570,8 @@ gene_detection <- function(object,
                   function(x) {sum(fData(object)$DetectionRate >= x)}))
   
   # Set up the rate
-  detect.loss$Percent_of_Panel <- detect.loss$Number / nrow(fData(object.segment.filtered))
-  rownames(plot.detect) <- detect.loss$Freq
+  detect.loss$Percent_of_Panel <- detect.loss$Number / nrow(fData(object))
+  rownames(detect.loss) <- detect.loss$Freq
   
   # Create the detection loss barplot
   detect.loss.plot <- ggplot(detect.loss, aes(x = as.factor(Freq), 
