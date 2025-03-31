@@ -9,8 +9,9 @@ editor: visual
 params:
   dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
   data.folder: "test_datasets/Human_Kidney/"
-  results.folder: "test_datasets/Human_Kidney/results/"
-  run.folder: "qc_report_dev_January2025/"
+  results.folder: "test_datasets/Human_Kidney/"
+  run.folder: "qc_report/"
+  dataset.name: "human_kidney_test"
 ---
 
 ## Load Libraries
@@ -153,9 +154,9 @@ qc.output <-  qcProc(object = init.object,
                         percent.stitched = 80,   
                         percent.aligned = 80,    
                         percent.saturation = 50, 
-                        min.negative.count = 3,   
-                        max.ntc.count = 1000,     
-                        min.nuclei = 200,         
+                        min.negative.count = 1.5,   
+                        max.ntc.count = 10000,     
+                        min.nuclei = 50,         
                         min.area = 1000,
                         print.plots = FALSE)
     
@@ -210,9 +211,10 @@ Probes that have been flagged as either local or global outliers.
 probe.flag.output <- probe_flag_table(probe.flags = qc.output$probe.flags, 
                                       object = qc.output$object)
 
-probe.flag.summary
+print(probe.flag.output$probe.flag.summary)
 
-probe.flags.table
+print(probe.flag.output$probe.flags.table)
+
 
 ```
 
@@ -246,7 +248,7 @@ AOIs in the low detection bin of 1-5%
 #| warning: false
 #| message: false
 
-aoi.detection$low.detection.table
+print(aoi.detection$low.detection.table)
 
 ```
 
@@ -268,6 +270,8 @@ aoi.detection.summary <- pData(object) %>%
 
 # Filter the data using the cutoff for gene detection rate
 aoi.gene.rate.cutoff <- 5
+
+object <- loq.detection.output$object
 
 object.aoi.filtered <-
     object[, pData(object)$GeneDetectionRate >= aoi.gene.rate.cutoff]
@@ -394,7 +398,7 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```{r Write QC output}
 
-write.qc.file <- FALSE
+write.qc.file <- TRUE
 
 if(write.qc.file == TRUE){
   
@@ -407,11 +411,11 @@ if(write.qc.file == TRUE){
   
   # Add the probe flag QC info to the output file
   addWorksheet(qc.info.output, "Probe QC Flags")
-  writeData(qc.info.output, sheet = "Probe QC Flags", probe.flags.table)
+  writeData(qc.info.output, sheet = "Probe QC Flags", probe.flag.output$probe.flags.table)
 
   # Add the AOI detection QC info
   addWorksheet(qc.info.output, "AOI Detection Rate")
-  writeData(qc.info.output, sheet = "AOI Detection Rate", segment.detection.summary)
+  writeData(qc.info.output, sheet = "AOI Detection Rate", aoi.detection.summary)
   
   # Add the Gene detection QC info to the output file
   addWorksheet(qc.info.output, "Gene Detection Rate")
@@ -435,6 +439,8 @@ if(write.qc.file == TRUE){
 plot.distribution <- plot_distribution(object = object.gene.filtered, 
                                        facet.annotation = "region")
 
+print(plot.distribution$distr.plots)
+
 
 ```
 
@@ -452,8 +458,10 @@ annotation <- pData(object.gene.filtered)
 nuclei.plot <- nuclei_plot(annotation = annotation, 
                            color = "region", 
                            facet = "class", 
-                           x.axis = "roi", 
-                           order.by.ROI.num = TRUE)
+                           x.axis = "segmentID", 
+                           order.by.ROI.num = FALSE)
+
+print(nuclei.plot)
 
 ```
 
@@ -482,9 +490,18 @@ dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayDat
 export.norm.object <- FALSE 
 if(export.norm.object == TRUE){
   
-  object <- q3.normalization.object
+  object <- q3.normalization.output$object
+  annotation <-pData(object)
+  counts <- object@assayData$q_norm
   
-  save(object, file = paste0(params$results.folder, params$run.folder, "$normalized.object.RDA"))
+  # Save the whole object
+  save(object, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_object.RDA"))
+  
+  # Save the annota.tion
+  save(annotation, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_annotation.RDA"))
+  
+  # Save the normalized counts
+  save(counts, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_counts.RDA"))
   
 }   
 ```
