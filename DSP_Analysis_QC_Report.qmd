@@ -211,9 +211,9 @@ Probes that have been flagged as either local or global outliers.
 probe.flag.output <- probe_flag_table(probe.flags = qc.output$probe.flags, 
                                       object = qc.output$object)
 
-print(probe.flag.output$probe.flag.summary)
+probe.flag.output$probe.flag.summary
 
-print(probe.flag.output$probe.flags.table)
+probe.flag.output$probe.flags.table
 
 
 ```
@@ -248,7 +248,7 @@ AOIs in the low detection bin of 1-5%
 #| warning: false
 #| message: false
 
-print(aoi.detection$low.detection.table)
+aoi.detection$low.detection.table
 
 ```
 
@@ -257,7 +257,7 @@ print(aoi.detection$low.detection.table)
 #| message: false
 
 # Store the AOI detection for export in the QC summary
-aoi.detection.summary <- pData(object) %>% 
+aoi.detection.summary <- pData(loq.detection.output$object) %>% 
   select(any_of(c("segmentID", "GeneDetectionRate", "DetectionThreshold")))
 
 ```
@@ -484,7 +484,7 @@ quantile.normalization.counts <- normalize.quantiles(object.gene.filtered@assayD
 
 dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayData$exprs)
 
-
+quantile.normalization.counts <- as.data.frame(quantile.normalization.counts)
     
 
 export.norm.object <- FALSE 
@@ -522,11 +522,25 @@ annotation <- pData(q3.normalization.output$object)
 
 raw.rle <- make_rle_plot(counts = raw.counts, 
                          annotation = annotation, 
-                         annotation.facet = "region")
+                         annotation.facet = "slide_name")
 
 q3.rle <- make_rle_plot(counts = q3.counts, 
                          annotation = annotation, 
-                         annotation.facet = "region")
+                         annotation.facet = "slide_name")
+
+neg.rle <- make_rle_plot(counts = neg.counts, 
+                         annotation = annotation, 
+                         annotation.facet = "slide_name")
+
+quant.rle <- make_rle_plot(counts = quantile.normalization.counts, 
+                         annotation = annotation, 
+                         annotation.facet = "slide_name")
+
+
+print(raw.rle)
+print(q3.rle)
+print(neg.rle)
+print(quant.rle)
 
 
 
@@ -541,7 +555,7 @@ q3.rle <- make_rle_plot(counts = q3.counts,
 #| message: false
 
 # The raw counts boxplot
-transform1.raw<- exprs(q3.normalization.object[,1:30])
+transform1.raw<- exprs(q3.normalization.output$object[,1:30])
 transform2.raw<- as.data.frame(transform1.raw)
 transform3.raw<- melt(transform2.raw)
 ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
@@ -554,9 +568,9 @@ ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
   scale_x_discrete(labels=c(1:30))
 
 # The Q3 normalized counts boxplot
-transform1.norm<- assayDataElement(q3.normalization.object[,1:30], elt = "q_norm")
-transform2.norm<- as.data.frame(transform1.norm)
-transform3.norm<- melt(transform2.norm)
+transform1.norm <- assayDataElement(q3.normalization.output$object[,1:30], elt = "q_norm")
+transform2.norm <- as.data.frame(transform1.norm)
+transform3.norm <- melt(transform2.norm)
 ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
   stat_boxplot(geom = "errorbar") +
   geom_boxplot(fill="cadetblue2") +
@@ -567,9 +581,9 @@ ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
   scale_x_discrete(labels=c(1:30))
 
 # The Negative normalized counts boxplot
-transform1.norm<- assayDataElement(neg.normalization.object[,1:30], elt = "neg_norm")
-transform2.norm<- as.data.frame(transform1.norm)
-transform3.norm<- melt(transform2.norm)
+transform1.norm <- assayDataElement(neg.normalization.output$object[,1:30], elt = "neg_norm")
+transform2.norm <- as.data.frame(transform1.norm)
+transform3.norm <- melt(transform2.norm)
 ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
   stat_boxplot(geom = "errorbar") +
   geom_boxplot(fill="indianred") +
@@ -579,9 +593,22 @@ ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
   ggtitle("Neg Norm Counts") +
   scale_x_discrete(labels=c(1:30))
 
+# The Negative normalized counts boxplot
+transform1.norm <- quantile.normalization.counts[,1:30]
+transform2.norm <- melt(transform1.norm)
+ggboxplot.quantnorm <- ggplot(transform2.norm, aes(variable, value)) +
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(fill="darkseagreen") +
+  scale_y_log10() +
+  xlab("Example AOIs") + 
+  ylab("Counts, Neg. Normalized") +
+  ggtitle("Neg Norm Counts") +
+  scale_x_discrete(labels=c(1:30))
+
 print(ggboxplot.raw)
 print(ggboxplot.q3norm)
 print(ggboxplot.negnorm)
+print(ggboxplot.quantnorm)
 
 
 ```
@@ -801,12 +828,14 @@ print(neg.pca.plot.slide)
 pre.norm.counts <-
   log(as.data.frame(q3.normalization.output$object@assayData$exprs), base = 2)
 
-post.q3norm.counts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
+post.q3norm.logcounts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
 
-post.negnorm.counts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
+post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
+
+quantile.normalization.logcounts <- log(quantile.normalization.counts, base = 2)
 
 # Setup annotation groups for the ratio "M" (log A - log B)
-region.types <- c("region_A", "region_B")
+region.types <- c("DKD", "normal")
 
 # Define the name of the contrast
 contrast.name <- paste0(region.types[[1]], 
@@ -814,9 +843,9 @@ contrast.name <- paste0(region.types[[1]],
                         region.types[[2]])
 
 # Set up the annotations and raw counts for the MA plots
-contrast.field <- "region"
-condition.label <- "region_A"
-reference.label <- "region_B"
+contrast.field <- "class"
+condition.label <- "DKD"
+reference.label <- "normal"
 raw.log.counts <- pre.norm.counts
 annotation.MA <- annotation
 ```
@@ -825,7 +854,7 @@ annotation.MA <- annotation
 
 ```{r MA Plot Q3, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 # MA plots for two annotation groups to evaluate negative normalization
-log.counts <- post.q3norm.counts
+log.counts <- post.q3norm.logcounts
 
 MA.plots.q3 <- make_MA(contrast.field = contrast.field, 
                        condition.label = condition.label, 
@@ -840,12 +869,10 @@ grid.draw(MA.plots.q3)
 
 #### Negative Normalization
 
-grid.draw(MA.plots.neg)
-
 ```{r MA Plot Neg, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 
 # MA plots for two annotation groups to evaluate negative normalization
-log.counts <- post.negnorm.counts
+log.counts <- post.negnorm.logcounts
 
 MA.plots.neg <- make_MA(contrast.field = contrast.field, 
                     condition.label = condition.label, 
@@ -856,4 +883,24 @@ MA.plots.neg <- make_MA(contrast.field = contrast.field,
   
   
 grid.draw(MA.plots.neg)
+```
+
+#### Quantile Normalization
+
+```{r MA Plot Quant, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
+
+# MA plots for two annotation groups to evaluate negative normalization
+log.counts <- quantile.normalization.logcounts
+
+MA.plots.quant <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = log.counts, 
+                    raw.log.counts = raw.log.counts, 
+                    annotation = annotation.MA)
+  
+  
+grid.draw(MA.plots.quant)
+
+
 ```
