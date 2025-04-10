@@ -1,3 +1,7 @@
+library(dplyr)
+library(ggplot2)
+library(tibble)
+
 
 ### Initialization Functions ###
 
@@ -570,8 +574,8 @@ gene_detection <- function(object,
                   function(x) {sum(fData(object)$DetectionRate >= x)}))
   
   # Set up the rate
-  detect.loss$Percent_of_Panel <- detect.loss$Number / nrow(fData(object.segment.filtered))
-  rownames(plot.detect) <- detect.loss$Freq
+  detect.loss$Percent_of_Panel <- detect.loss$Number / nrow(fData(object))
+  rownames(detect.loss) <- detect.loss$Freq
   
   # Create the detection loss barplot
   detect.loss.plot <- ggplot(detect.loss, aes(x = as.factor(Freq), 
@@ -1197,4 +1201,36 @@ gene_counts_violin_boxplot <- function(counts,
   
   return(field.violin.plot)
   
+}
+
+
+multi_boxplot <- function(counts.annotation.df, 
+                          group.field, 
+                          group.values, 
+                          subgroup.field,
+                          subgroup.values,
+                          target.description.df,
+                          fill.field, 
+                          fill.values, 
+                          fill.colors, 
+                          custom.target.order){
+  
+  # Check that the fill colors and values match
+  fill.diff <- setdiff(fill.values, names(fill.colors))
+  if(length(fill.diff) > 0){
+    
+    print("Difference between fill values and fill colors vector names: ")
+    print(fill.diff)
+    
   }
+  
+  # Subset the counts for only the specified groups and fill values
+  counts.annotation.subset <- counts.annotation.df %>% 
+    filter(.data[[group.field]] %in% group.values) %>% 
+    filter(.data[[subgroup.field]] %in% subgroup.values)
+  
+  # Check that the group and fill values are found in the data
+  group.diff<- setdiff(group.values, )
+  
+  
+}
