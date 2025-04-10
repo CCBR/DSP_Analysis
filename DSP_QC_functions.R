@@ -1,3 +1,7 @@
+library(dplyr)
+library(ggplot2)
+library(tibble)
+
 
 ### Initialization Functions ###
 
@@ -1009,6 +1013,7 @@ nuclei_plot <- function(annotation,
                         x.axis, 
                         order.by.ROI.num = FALSE, 
                         nuclei.field.name = 'nuclei'){
+
   
   # Set the upper and lower y limits of the plot (log2 counts)
   y.upper.limit <- max(annotation[[nuclei.field.name]]) + 10
@@ -1023,10 +1028,10 @@ nuclei_plot <- function(annotation,
     
   } else {
     
-    # Order by facet and color annotations
+    #Order by facet and color annotations
     annotation <- annotation %>%
-      arrange(.data[[color]]) %>% 
-      arrange(.data[[facet]])
+    arrange(.data[[color]]) %>% 
+    arrange(.data[[facet]])
     
   }
   
@@ -1197,4 +1202,36 @@ gene_counts_violin_boxplot <- function(counts,
   
   return(field.violin.plot)
   
+}
+
+
+multi_boxplot <- function(counts.annotation.df, 
+                          group.field, 
+                          group.values, 
+                          subgroup.field,
+                          subgroup.values,
+                          target.description.df,
+                          fill.field, 
+                          fill.values, 
+                          fill.colors, 
+                          custom.target.order){
+  
+  # Check that the fill colors and values match
+  fill.diff <- setdiff(fill.values, names(fill.colors))
+  if(length(fill.diff) > 0){
+    
+    print("Difference between fill values and fill colors vector names: ")
+    print(fill.diff)
+    
   }
+  
+  # Subset the counts for only the specified groups and fill values
+  counts.annotation.subset <- counts.annotation.df %>% 
+    filter(.data[[group.field]] %in% group.values) %>% 
+    filter(.data[[subgroup.field]] %in% subgroup.values)
+  
+  # Check that the group and fill values are found in the data
+  group.diff<- setdiff(group.values, )
+  
+  
+}

@@ -1,0 +1,528 @@
+---
+title: "DSP Analysis QC Report - nCounter Protein for Rits Sarkar"
+subtitle: "Tumor AOIs Only"
+format:
+  html:
+    code-fold: true
+    fig-width: 14
+    fig-height: 10
+editor: visual
+#css: "qc_report_style.css"
+
+params:
+  dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
+  data.folder: "/Users/cauleyes/CPTR/Rits_Sarkar/Processed_Data/Tumor_Samples/"
+  results.folder: "QC/"
+  run.folder: "Tumor_Only_Run_March_19_2025/"
+---
+
+## Load Libraries
+
+```{r Load Libraries}
+#| warning: false
+#| message: false
+
+# Load all relevant libraries
+
+library(DSPWorkflow)
+library(GeomxTools)
+library(dplyr)
+library(limma)
+library(edgeR)
+library(ggplot2)
+library(ggrepel)
+library(ggforce)
+library(shadowtext)
+library(stringr)
+library(PCAtools)
+library(readxl)
+library(gridExtra)
+library(grid)
+library(knitr)
+library(gt)
+library(tidyr)
+library(openxlsx)
+library(ComplexUpset)
+library(reshape2)
+library(cowplot)
+library(preprocessCore)
+library(tibble)
+library(ggpubr)
+
+source(paste0(params$dsp.analysis.folder, "DSP_QC_functions.R"))
+```
+
+## Initialization
+
+```{r Initialization}
+#| warning: false
+#| message: false
+
+# Load the counts files
+counts.list <- list()
+counts.list[["raw"]] <- read_excel(paste0(params$data.folder, 
+                                          "Counts/Tumor_Only_Raw_Counts.xlsx"))
+counts.list[["filtered"]] <- read_excel(paste0(params$data.folder, 
+                                               "Counts/Tumor_Only_Filter_Counts.xlsx"))
+counts.list[["norm_hk"]] <- read_excel(paste0(params$data.folder, 
+                                              "Counts/Tumor_Only_HK_Normalization_Counts.xlsx"))
+counts.list[["norm_neg"]] <- read_excel(paste0(params$data.folder, 
+                                               "Counts/Tumor_Only_Negative_Normalization_Counts.xlsx"))
+
+# Correct any bad charcaters in column names
+for(type in names(counts.list)){
+  
+  colnames(counts.list[[type]]) <- gsub(" ", "", colnames(counts.list[[type]]))
+  colnames(counts.list[[type]]) <- gsub("-", "_", colnames(counts.list[[type]]))
+  
+}
+
+# Load the annotations
+annotation <- read_excel(paste0(params$data.folder, 
+                         "Annotation/Tumor_Only_Annotation_for_Rits.xlsx"))
+
+qc.info <- read_excel(paste0(params$data.folder, 
+                         "Annotation/Tumor_Only_Segment_Summary.xlsx"))
+
+
+# Create an ID for mapping the annotation and qc info
+annotation$AOI_ID <- paste0(annotation$`Scan Name`, 
+                            "|", 
+                            annotation$`ROI (Label)`, 
+                            "|", 
+                            annotation$`Segment (Name/ Label)`)
+
+qc.info$AOI_ID <- paste0(qc.info$`Scan Name`, 
+                         "|", 
+                         qc.info$`ROI name`, 
+                         "|", 
+                         qc.info$`Segment name`)
+
+annotation$AOI_ID <- gsub(" ", "", annotation$AOI_ID)
+annotation$AOI_ID <- gsub("-", "_", annotation$AOI_ID)
+qc.info$AOI_ID <- gsub(" ", "", annotation$AOI_ID)
+qc.info$AOI_ID <- gsub("-", "_", annotation$AOI_ID)
+
+# Clean up the slide name in the annotation
+annotation$slide_name <- gsub("-", "_", annotation$`Scan Name`)
+annotation$slide_name <- gsub(" ", "", annotation$slide_name)
+
+```
+
+### AOI Summary
+
+```{r AOI Count Bar Plot}
+#| label: fig-aoibarplot
+#| fig-cap: "AOI Count Bar Plot"
+#| warning: false
+
+lane.1 <- "slide_name"
+lane.2 <- "Tissue Type"
+lane.3 <- "Segment Tags/classifier"
+lane.4 <- "Segment (Name/ Label)"
+  
+lanes <- c(lane.1, lane.2, lane.3, lane.4)
+  
+  
+#Establish variables for the Sankey plot
+x <- id <- y <- n <- NULL
+
+# Create a count matrix
+count.mat <- count(annotation, 
+                   !!as.name(lane.1), 
+                   !!as.name(lane.2), 
+                   !!as.name(lane.3), 
+                   !!as.name(lane.4))
+
+# Remove any rows with NA values
+na.per.column <- colSums(is.na(count.mat))
+na.total.count <- sum(na.per.column)
+  
+if(na.total.count > 0){
+  count.mat <- count.mat[!rowSums(is.na(count.mat)),]
+  rownames(count.mat) <- 1:nrow(count.mat)
+}
+
+# Define the annotation columns
+annotation.columns <- c("slide_name", "Tissue Type", "Segment Tags/classifier")
+segment.column <- "Segment (Name/ Label)"
+
+# Remove the segment column
+annotation.mat <- as.data.frame(count.mat) %>% 
+  select(-'Segment (Name/ Label)')
+
+# Create the melted df for ggplot
+annotation.melt <- pivot_longer(annotation.mat, 
+                            cols = annotation.columns, 
+                            names_to = "annotation_column", 
+                            values_to = "annotation_value")
+
+# Create a barplot with no number labels
+annotation.barplot <- ggplot(annotation.melt, aes(x = annotation_value, 
+                                                  y = n)) + 
+  geom_bar(stat = 'identity') + 
+  facet_wrap(~ annotation_column, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = NULL, y = "# of AOIs")
+
+# Remove bad charcaters in annotation
+colnames(annotation.mat) <- gsub(" ", "", colnames(annotation.mat))
+colnames(annotation.mat) <- gsub("/", "_", colnames(annotation.mat))
+
+# Create barplots with number labels
+annotation.barplot.slide <- ggplot(annotation.mat, aes(x = SegmentTags_classifier, 
+                                                  y = n)) + 
+  geom_bar(stat = 'identity') + 
+  facet_wrap(~ slide_name, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = NULL, y = "# of AOIs") + 
+  geom_text(aes(label = n), vjust = -1, size = 3.5)
+
+# Create the barplot df with no slide
+annotation.mat.total <- annotation.mat %>% 
+  select(-slide_name) %>% 
+  group_by(SegmentTags_classifier, TissueType) %>%
+  summarize(n = sum(n), .groups = 'drop')
+
+annotation.barplot.total <- ggplot(annotation.mat.total, aes(x = SegmentTags_classifier, 
+                                                  y = n)) + 
+  geom_bar(stat = 'identity') + 
+  facet_wrap(~ TissueType, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = NULL, y = "# of AOIs") + 
+  geom_text(aes(label = n), color="black", size=3.5, vjust = -1)
+
+
+print(annotation.barplot)
+print(annotation.barplot.slide)
+print(annotation.barplot.total)
+```
+
+### Summary of QC for AOIs and Probes
+
+```{r QC Summary}
+#| warning: false
+#| message: false
+
+# Get only the relevant qc columns
+qc.info.trimmed <- qc.info %>% 
+  select(AOI_ID, 
+         `Binding Density`, 
+         `FoV registration QC`, 
+         `Positive norm factor`, 
+         `Surface area`, 
+         `Nuclei count`, 
+         `QC flags`, 
+         `QC status`)
+
+
+# Create a table for the QC
+# A function for coloring TRUE flags as red
+qc.flag <- function(x) {
+  ifelse(x == "PASSED", "green1", "red") 
+}
+
+# Create the table using the flag coloring function
+aoi.flag.table <- qc.info.trimmed %>% 
+  gt() %>% 
+  data_color(columns = 'QC status', 
+             fn = qc.flag, 
+             alpha = 0.7)
+
+aoi.flag.table
+```
+
+### Nuclei Plot
+
+```{r Nuclei per Annotation}
+#| warning: false
+#| message: false
+
+# Combine the nuclei count with the annotation
+qc.annotation <- merge(qc.info.trimmed, annotation, by = "AOI_ID")
+
+# Clean up bad characters in column names
+colnames(qc.annotation) <- gsub(" ", "", colnames(qc.annotation))
+colnames(qc.annotation) <- gsub("/", "_", colnames(qc.annotation))
+
+# Plot the number of nuclei per ROI for an annotation of interest
+nuclei.plot <- nuclei_plot(annotation = qc.annotation, 
+                           color = "slide_name", 
+                           facet = "TissueType", 
+                           x.axis = "SegmentTags_classifier", 
+                           order.by.ROI.num = FALSE, 
+                           nuclei.field.name = 'Nucleicount')
+
+print(nuclei.plot)
+
+```
+
+### Target Normalization
+
+```{r Target Boxplots}
+#| warning: false
+#| message: false
+
+# Colors for Target types
+target.colors = c("Negative" = "indianred1", 
+                  "Positive" = "darkseagreen2", 
+                  "Control" = "cadetblue1", 
+                  "Endogenous" = "mediumorchid1")
+
+target.boxplot <- function(counts, 
+                           plot.title){
+  
+  colnames(counts) <- gsub(" ", "", colnames(counts))
+  colnames(counts) <- gsub("-", "_", colnames(counts))
+  
+  AOI.counts <- counts %>% 
+    select(-Type, -Target)
+  
+  AOI.ID.columns <- colnames(AOI.counts)
+  
+  counts.melt <- pivot_longer(counts, 
+                              cols = AOI.ID.columns, 
+                              names_to = "AOI_ID", 
+                              values_to = "log2.counts")
+  
+  # Arranage by the type of target
+  # Specify the desired order
+  type.order <- c('Negative', 'Positive', 'Control', 'Endogenous')
+  
+  # Set the type as a factor to maintain ordering
+  counts.melt$Type <- factor(counts.melt$Type, 
+                             levels = type.order)
+  
+  # Arrange the data frame by the target type
+  counts.melt <- counts.melt %>% arrange(Type)
+
+  counts.melt$Target <- factor(counts.melt$Target, 
+                               levels = unique(counts.melt$Target))
+  
+  # Convert counts to log2
+  counts.melt$log2.counts <- log2(counts.melt$log2.counts)
+  
+  # Define the negative background line
+  negative.counts <- counts.melt %>% 
+    filter(Type == "Negative")
+  
+  negative.count.mean <- mean(negative.counts$log2.counts)
+  
+  target.boxplot <- ggplot(counts.melt, aes(x = Target, 
+                                            y = log2.counts, 
+                                            fill = Type)) + 
+    geom_boxplot() + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+    labs(x = "Target", 
+         y = "Counts (log2)", 
+         title = plot.title) + 
+    geom_hline(yintercept = negative.count.mean, 
+               linetype = "dashed", 
+               color = "indianred1") + 
+    scale_fill_manual(values = target.colors)
+  
+}
+
+# Create the target boxplot for all 
+raw.target.boxplot <- target.boxplot(counts = counts.list$raw, 
+                                     plot.title = "All Targets Raw Counts")
+filtered.target.boxplot <- target.boxplot(counts = counts.list$filtered, 
+                                          plot.title = "Filtered Targets Raw Counts")
+norm_hk.target.boxplot <- target.boxplot(counts = counts.list$norm_hk, 
+                                         plot.title = "Filtered Targets HK Normalized")
+norm_neg.target.boxplot <- target.boxplot(counts = counts.list$norm_neg, 
+                                          plot.title = "Filtered Targets Neg Normalized")
+
+# Print the boxplots
+print(raw.target.boxplot)
+print(filtered.target.boxplot)
+print(norm_hk.target.boxplot)
+print(norm_neg.target.boxplot)
+
+# Gather a list of targets that were filtered out
+filtered.targets <- setdiff(counts.list$raw$Target, counts.list$filtered$Target)
+
+
+print("The following targets have been removed from filtering: ")
+print(filtered.targets)
+```
+
+#### Boxplots per Annotation
+
+```{r Boxplots per Annotation}
+#| warning: false
+#| message: false
+
+counts.controls.removed <- counts.list$norm_hk %>% 
+  filter(Type == "Endogenous")
+
+counts.transpose <- as.data.frame(t(counts.controls.removed))
+
+# Remove the first row for type
+counts.transpose <- counts.transpose[2:nrow(counts.transpose),]
+
+# Add the column names and remove extra row
+colnames(counts.transpose) <- counts.transpose[1,]
+counts.transpose <- counts.transpose[2:nrow(counts.transpose),]
+
+# Add the ID for merging to the annotation
+counts.transpose$AOI_ID <- rownames(counts.transpose)
+
+# Create the master df of counts and annotation
+counts.annotation.df <- merge(annotation, counts.transpose, by = "AOI_ID")
+
+# Fix badly named columns
+counts.annotation.df$TissueSegment <- counts.annotation.df$`Segment Tags/classifier`
+counts.annotation.df$TissueType <- counts.annotation.df$`Tissue Type`
+
+# Remove the extra columns 
+counts.annotation.df <- counts.annotation.df %>% 
+  select(-`Scan Name`, 
+         -`ROI (Label)`, 
+         -`Segment (Name/ Label)`, 
+         -`Description`, 
+         -`slide_name`, 
+         -`Tissue Type`, 
+         -`Segment Tags/classifier`)
+
+
+
+# Gather the target column names
+target.df <- counts.annotation.df %>% 
+  select(-AOI_ID, -TissueSegment, -TissueType)
+
+target.names <- colnames(target.df)
+
+# Create the melted df
+counts.annotation.melt <- pivot_longer(counts.annotation.df, 
+                              cols = target.names, 
+                              names_to = "Target", 
+                              values_to = "log2.counts")
+
+# Transform the counts to log2
+counts.annotation.melt$log2.counts <- log2(as.numeric(counts.annotation.melt$log2.counts))
+
+# Subset for Tumor normal vs. immune
+tumor.compare.melt <- counts.annotation.melt %>% 
+  filter(TissueType == "tumor") %>% 
+  filter(TissueSegment %in% c("normal", 
+                              "CD20 immune"))
+
+tumor.immune.boxplot <- ggplot(tumor.compare.melt, aes(x = Target, 
+                                                       y = log2.counts, 
+                                                       fill = TissueSegment)) + 
+  geom_boxplot() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+    labs(x = NULL, 
+         y = "Counts (log2)")
+
+
+comparison.list <- list(c("CD20 immune", "normal"))
+
+tumor.immune.boxplot.faceted <- ggplot(tumor.compare.melt, aes(x = TissueSegment, 
+                                                       y = log2.counts, 
+                                                       fill = TissueSegment)) + 
+  geom_boxplot() + 
+  labs(x = NULL, 
+       y = "Counts (log2)") + 
+  facet_wrap(~ Target, scales = "free") + 
+  theme(legend.position = "none") + 
+  stat_compare_means(comparisons = comparison.list, 
+                     label = "p.signif", 
+                     label.y = 6, 
+                     color = "darkred")
+
+print(tumor.immune.boxplot)
+print(tumor.immune.boxplot.faceted)
+
+```
+
+#### Principal Component Analysis (PCA)
+
+```{r PCA}
+#| warning: false
+#| message: false
+
+
+# See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction
+
+# Gather the the normalized counts
+hk.norm.counts <- counts.transpose
+
+# Convert counts to log2
+hk.norm.counts.log <- hk.norm.counts %>% 
+  select(-AOI_ID) %>% 
+  mutate_all(~ as.numeric(.)) %>% 
+  mutate_all(~ log2(.))
+  
+hk.norm.counts.pca <- as.data.frame(t(hk.norm.counts.log))
+
+# Load the annotation (same for both normalization types)
+annotation.pca <- as.data.frame(annotation)
+rownames(annotation.pca) <- annotation.pca$AOI_ID
+
+# Order of rownames of annotation need to match columns of count data
+hk.norm.counts.pca <- hk.norm.counts.pca[, rownames(annotation.pca)]
+
+# Generate a PCA table for all samples for both normalization types
+hk_norm.pca.table <- pca(hk.norm.counts.pca, 
+                         metadata = annotation.pca, 
+                         removeVar = 0.1)
+
+```
+
+#### PCA by Tissue Type
+
+```{r PCA for HK normalized Tissue Type, fig.width=12, fig.height=8}
+#| label: fig-PCAtissuetype_hk
+#| fig-cap: "PCA colored by Tissue Type for HK Normalization"
+#| warning: false
+
+hk_norm.pca.plot.tissue_type <- biplot(hk_norm.pca.table, 
+                         colby = "Tissue Type", 
+                         legendPosition = "right", 
+                         legendLabSize = 6, 
+                         legendIconSize = 3, 
+                         lab = NULL,
+                         title = "HK Normalization")
+
+print(hk_norm.pca.plot.tissue_type)
+```
+
+#### PCA by Tissue Segment
+
+```{r PCA for HK Tissue Segment, fig.width=12, fig.height=8}
+#| label: fig-PCAtissuesegment_hk
+#| fig-cap: "PCA colored by Tissue Segment for HK Normalization"
+#| warning: false
+
+hk_norm.pca.plot.tissue_segment <- biplot(hk_norm.pca.table, 
+                         colby = "Segment Tags/classifier", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "HK Normalization")
+
+
+print(hk_norm.pca.plot.tissue_segment)
+
+```
+
+#### PCA by Slide
+
+```{r PCA for HK slide, fig.width=12, fig.height=8}
+#| label: fig-PCAslide_hk
+#| fig-cap: "PCA colored by Slide for HK Normalization"
+#| warning: false
+
+hk_norm.pca.plot.slide <- biplot(hk_norm.pca.table, 
+                         colby = "slide_name", 
+                         legendPosition = "right", 
+                         legendLabSize = 10, 
+                         legendIconSize = 5, 
+                         lab = NULL,
+                         title = "HK Normalization")
+
+print(hk_norm.pca.plot.slide)
+```
