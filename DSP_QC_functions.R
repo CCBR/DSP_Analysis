@@ -1012,7 +1012,8 @@ nuclei_plot <- function(annotation,
                         facet, 
                         x.axis, 
                         order.by.ROI.num = FALSE, 
-                        nuclei.field.name){
+                        nuclei.field.name = 'nuclei'){
+
   
   # Set the upper and lower y limits of the plot (log2 counts)
   y.upper.limit <- max(annotation[[nuclei.field.name]]) + 10
