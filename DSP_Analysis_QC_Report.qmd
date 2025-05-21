@@ -459,7 +459,8 @@ nuclei.plot <- nuclei_plot(annotation = annotation,
                            color = "region", 
                            facet = "class", 
                            x.axis = "segmentID", 
-                           order.by.ROI.num = FALSE)
+                           order.by.ROI.num = FALSE, 
+                           x.axis.label.shown = FALSE)
 
 print(nuclei.plot)
 
@@ -520,21 +521,31 @@ neg.counts <- neg.normalization.output$object@assayData$neg_norm
 # Annotation
 annotation <- pData(q3.normalization.output$object)
 
+# Annotation to groupo by
+annotation.facet <- "slide_name"
+
+# The ammount to subsample, with 1 being no subsampling
+subsample.ammount <- 0.2
+
 raw.rle <- make_rle_plot(counts = raw.counts, 
                          annotation = annotation, 
-                         annotation.facet = "slide_name")
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
 
 q3.rle <- make_rle_plot(counts = q3.counts, 
                          annotation = annotation, 
-                         annotation.facet = "slide_name")
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
 
 neg.rle <- make_rle_plot(counts = neg.counts, 
                          annotation = annotation, 
-                         annotation.facet = "slide_name")
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
 
 quant.rle <- make_rle_plot(counts = quantile.normalization.counts, 
                          annotation = annotation, 
-                         annotation.facet = "slide_name")
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
 
 
 print(raw.rle)
