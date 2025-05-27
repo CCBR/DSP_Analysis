@@ -488,7 +488,7 @@ dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayDat
 quantile.normalization.counts <- as.data.frame(quantile.normalization.counts)
     
 
-export.norm.object <- FALSE 
+export.q3norm.object <- FALSE 
 if(export.norm.object == TRUE){
   
   object <- q3.normalization.output$object
@@ -505,6 +505,30 @@ if(export.norm.object == TRUE){
   save(counts, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_counts.RDA"))
   
 }   
+
+export.quantile.counts <- FALSE 
+if(export.norm.object == TRUE){
+  
+  counts <- quantile.normalization.counts
+  counts$gene <- rownames(counts)
+
+  annotation <-pData(object.gene.filtered)
+  annotation$sample_ID <- rownames(annotation)
+  annotation <- annotation %>% select(-loq)
+  
+  # Save the annota.tion
+  write.csv(annotation, 
+            file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_annotation.csv"), 
+            row.names = FALSE)
+  
+  # Save the normalized counts
+  write.csv(counts, 
+            file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_quantile_norm_counts.csv"), 
+            row.names = FALSE)
+  
+}   
+
+
 ```
 
 #### RLE Plots
@@ -637,6 +661,7 @@ object.neg <- neg.normalization.output$object
 # Gather the the normalized counts
 q3.norm.counts.df <- as.data.frame(object.q3@assayData$q_norm)
 neg.norm.counts.df <- as.data.frame(object.neg@assayData$neg_norm)
+quant.norm.counts.df <- quantile.normalization.counts
 
 # Convert counts to log2
 q3.log.counts.df <- q3.norm.counts.df %>% 
@@ -645,11 +670,17 @@ q3.log.counts.df <- q3.norm.counts.df %>%
 neg.log.counts.df <- neg.norm.counts.df %>% 
   mutate_all(~ log2(.)) %>% 
   rename_all(~ gsub("\\.dcc", "", .))
+quant.log.counts.df <- quant.norm.counts.df %>% 
+  mutate_all(~ log2(.)) %>% 
+  rename_all(~ gsub("\\.dcc", "", .))
+
 
 # Remove the negative controls from the log counts
 control.probes <- c("NegProbe-WTX")
 q3.log.counts.df <- q3.log.counts.df[!(rownames(q3.log.counts.df) %in% control.probes), ]
 neg.log.counts.df <- neg.log.counts.df[!(rownames(neg.log.counts.df) %in% control.probes), ]
+quant.log.counts.df <- quant.log.counts.df[!(rownames(quant.log.counts.df) %in% control.probes), ]
+
 
 # Load the annotation (same for both normalization types)
 annotation <- pData(object.q3)
@@ -662,6 +693,7 @@ cleaned.annotation.df <- cleaned.annotation.df[order(rownames(cleaned.annotation
 
 q3.log.counts.df <- q3.log.counts.df[order(colnames(q3.log.counts.df))]
 neg.log.counts.df <- neg.log.counts.df[order(colnames(neg.log.counts.df))]
+quant.log.counts.df <- quant.log.counts.df[order(colnames(quant.log.counts.df))]
 
 # Remove .dcc from Sample ID row names
 cleaned.annotation.df <- cleaned.annotation.df %>% `rownames<-`(sub("\\.dcc", "", rownames(.)))
@@ -673,7 +705,9 @@ q3.pca.table <- pca(q3.log.counts.df,
 neg.pca.table <- pca(neg.log.counts.df, 
                  metadata = cleaned.annotation.df, 
                  removeVar = 0.1)
-
+quant.pca.table <- pca(quant.log.counts.df, 
+                 metadata = cleaned.annotation.df, 
+                 removeVar = 0.1)
 
 ```
 
