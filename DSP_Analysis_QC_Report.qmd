@@ -466,6 +466,19 @@ print(nuclei.plot)
 
 ```
 
+#### Export Pre-Normalization Object
+
+```{r Export Filtered Object, warning=FALSE, message=FALSE}
+
+# Save the filtered object
+saveRDS(object.gene.filtered, file = paste0(params$results.folder, 
+                                         params$run.folder, 
+                                         params$dataset.name, 
+                                         "_filtered_object.RDS"))
+
+
+```
+
 ### Normalization
 
 ```{r Normalization, warning=FALSE, message=FALSE}
