@@ -291,6 +291,8 @@ upsetr_plot <- function(object,
     
   }
   
+  all.group.values <- all.group.values[!is.na(all.group.values)]
+  
   # Create the upset df with all FALSE values
   upset.df <- as.data.frame(matrix(FALSE, nrow = nrow(pData(object)), 
                                    ncol = length(all.group.values)))
@@ -300,6 +302,8 @@ upsetr_plot <- function(object,
   
   # Subset the annotation for only the relevant columns for upsetr
   anno.subset <- pData(object) %>% select(all_of(annotation.groups))
+  
+  anno.subset <- na.omit(anno.subset)
   
   # For each row in the annotation data, if it contains the value of a column in the upsetr plot mark as TRUE
   for (i in 1:nrow(anno.subset)) {
@@ -498,7 +502,6 @@ gene_detection <- function(object,
     # A master df to hold all feature (gene) detection for facet values
     feature.detect.facet.df <- data.frame(feature = rownames(fData(object)))
     
-    
     # Gather the IDs for each facet value
     for(value in facet.values){
       
@@ -516,12 +519,18 @@ gene_detection <- function(object,
       # Compute the detection for each feature
       value.feature.df <- data.frame(feature = rownames(fData(object)))
       
-      value.feature.df[[value]] <- 100*(rowSums(loq.mat.value, na.rm = TRUE)/total.AOIs)
+      # Check if there are enough AOIs for the value
+      if(length(dim(loq.mat.value)) > 1){
+        
+        value.feature.df[[value]] <- 100*(rowSums(loq.mat.value, na.rm = TRUE)/total.AOIs)
+        
+        # Add the detection per feature for this value to the master df
+        feature.detect.facet.df <- merge(feature.detect.facet.df, 
+                                         value.feature.df, 
+                                         by = "feature")
+        
+      }
       
-      # Add the detection per feature for this value to the master df
-      feature.detect.facet.df <- merge(feature.detect.facet.df, 
-                                       value.feature.df, 
-                                       by = "feature")
     }
     
     # Melt the feature detect facet df for easier ggplot faceting
