@@ -37,14 +37,14 @@ ui <- page_sidebar(
                   "Display Summary Stats", 
                   value = FALSE), 
     
-    checkboxInput("compare", 
-                  "Wilcoxon Rank Sum Test", 
-                  value = FALSE), 
+    #checkboxInput("compare", 
+    #              "Wilcoxon Rank Sum Test", 
+    #              value = FALSE), 
     
-    selectizeInput("compare.groups", 
-                   "Groups to Compare", 
-                   choices = NULL, 
-                   multiple = FALSE), 
+    #selectizeInput("compare.groups", 
+    #               "Groups to Compare", 
+    #               choices = NULL, 
+    #               multiple = FALSE), 
     
   ),
   
@@ -70,20 +70,20 @@ server <- function(input, output, session) {
                          choices = annotation.cols, 
                          server = TRUE)
     
-    updateSelectizeInput(session, 
-                         "compare.groups", 
-                         choices = unique(annotation.data[[input$annotation]]), 
-                         server = TRUE)
+    #updateSelectizeInput(session, 
+    #                     "compare.groups", 
+    #                     choices = unique(annotation.data[[input$annotation]]), 
+    #                     server = TRUE)
   })
   
   # Reactive summary stats toggle
   summary_stats <- reactive({input$summary_stats})
   
   # Reactive compare toggle
-  compare <- reactive({input$compare})
+  #compare <- reactive({input$compare})
   
   # Groups to compare
-  compare.list <- list(input$compare.groups)
+  #compare.list <- list(input$compare.groups)
   
   output$Violin_Boxplot <- renderPlot({
     
@@ -92,8 +92,8 @@ server <- function(input, output, session) {
                    gene.list = input$gene, 
                    annotation.field = input$annotation, 
                    display.summary.stat = input$summary_stats, 
-                   compare = input$compare, 
-                   compare.groups = compare.list)
+                   compare = FALSE, 
+                   compare.groups = NULL)
     
   })
   

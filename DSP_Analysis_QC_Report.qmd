@@ -7,9 +7,11 @@ editor: visual
 #css: "qc_report_style.css"
 
 params:
+  dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
   data.folder: "test_datasets/Human_Kidney/"
-  results.folder: "test_datasets/Human_Kidney/results/"
-  run.folder: "qc_report_dev_January2025/"
+  results.folder: "test_datasets/Human_Kidney/"
+  run.folder: "qc_report/"
+  dataset.name: "human_kidney_test"
 ---
 
 ## Load Libraries
@@ -152,9 +154,9 @@ qc.output <-  qcProc(object = init.object,
                         percent.stitched = 80,   
                         percent.aligned = 80,    
                         percent.saturation = 50, 
-                        min.negative.count = 3,   
-                        max.ntc.count = 1000,     
-                        min.nuclei = 200,         
+                        min.negative.count = 1.5,   
+                        max.ntc.count = 10000,     
+                        min.nuclei = 50,         
                         min.area = 1000,
                         print.plots = FALSE)
     
@@ -187,11 +189,15 @@ qc.output$plot$neg.plot
 
 AOIs that have been flagged with the given QC parameters
 
+aoi.flag.table \<- aoi_flag_table(aoi.flags = qc.output\$segment.flags)
+
+print(aoi.flag.table)
+
 ```{r AOI Flags}
 
 aoi.flag.table <- aoi_flag_table(aoi.flags = qc.output$segment.flags)
 
-print(aoi.flag.table)
+aoi.flag.table
 
 ```
 
@@ -205,9 +211,10 @@ Probes that have been flagged as either local or global outliers.
 probe.flag.output <- probe_flag_table(probe.flags = qc.output$probe.flags, 
                                       object = qc.output$object)
 
-print(probe.flag.summary)
+probe.flag.output$probe.flag.summary
 
-print(probe.flags.table)
+probe.flag.output$probe.flags.table
+
 
 ```
 
@@ -231,7 +238,7 @@ loq.detection.output <- loq_detection(object = qc.output$object,
 
 aoi.detection <- aoi_detection(object = loq.detection.output$object)
 
-print(gene.detection.per.aoi$detection.bar.plot)
+print(aoi.detection$detection.bar.plot)
 
 ```
 
@@ -241,7 +248,7 @@ AOIs in the low detection bin of 1-5%
 #| warning: false
 #| message: false
 
-print(gene.detection.per.aoi$low.detection.table)
+aoi.detection$low.detection.table
 
 ```
 
@@ -250,7 +257,7 @@ print(gene.detection.per.aoi$low.detection.table)
 #| message: false
 
 # Store the AOI detection for export in the QC summary
-aoi.detection.summary <- pData(object) %>% 
+aoi.detection.summary <- pData(loq.detection.output$object) %>% 
   select(any_of(c("segmentID", "GeneDetectionRate", "DetectionThreshold")))
 
 ```
@@ -264,6 +271,8 @@ aoi.detection.summary <- pData(object) %>%
 # Filter the data using the cutoff for gene detection rate
 aoi.gene.rate.cutoff <- 5
 
+object <- loq.detection.output$object
+
 object.aoi.filtered <-
     object[, pData(object)$GeneDetectionRate >= aoi.gene.rate.cutoff]
 
@@ -276,7 +285,7 @@ aoi.filtered.out.table <- aoi.filtered.out %>%
   tab_header(title = "AOIs Filtered Out", 
              subtitle = paste0(aoi.gene.rate.cutoff, "% Cutoff"), preheader = NULL)
 
-print(aoi.filtered.out.table)
+aoi.filtered.out.table
 
 ```
 
@@ -331,9 +340,9 @@ goi.df <- data.frame(Gene = goi,
                      DetectionRate = fData(loq.detection.output.aoi.filtered$object)[goi, "DetectionRate"])
 
 # Print the GOI table
-goi.table <- goi.table %>% gt()
+goi.table <- goi.df %>% gt()
 
-print(goi.table)
+goi.table
 ```
 
 @fig-DetectionPerGeneLoss shows the loss of percentage of all AOIs individual genes are detected within
@@ -389,7 +398,7 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```{r Write QC output}
 
-write.qc.file <- FALSE
+write.qc.file <- TRUE
 
 if(write.qc.file == TRUE){
   
@@ -402,11 +411,11 @@ if(write.qc.file == TRUE){
   
   # Add the probe flag QC info to the output file
   addWorksheet(qc.info.output, "Probe QC Flags")
-  writeData(qc.info.output, sheet = "Probe QC Flags", probe.flags.table)
+  writeData(qc.info.output, sheet = "Probe QC Flags", probe.flag.output$probe.flags.table)
 
   # Add the AOI detection QC info
   addWorksheet(qc.info.output, "AOI Detection Rate")
-  writeData(qc.info.output, sheet = "AOI Detection Rate", segment.detection.summary)
+  writeData(qc.info.output, sheet = "AOI Detection Rate", aoi.detection.summary)
   
   # Add the Gene detection QC info to the output file
   addWorksheet(qc.info.output, "Gene Detection Rate")
@@ -430,6 +439,8 @@ if(write.qc.file == TRUE){
 plot.distribution <- plot_distribution(object = object.gene.filtered, 
                                        facet.annotation = "region")
 
+print(plot.distribution$distr.plots)
+
 
 ```
 
@@ -447,8 +458,11 @@ annotation <- pData(object.gene.filtered)
 nuclei.plot <- nuclei_plot(annotation = annotation, 
                            color = "region", 
                            facet = "class", 
-                           x.axis = "roi", 
-                           order.by.ROI.num = TRUE)
+                           x.axis = "segmentID", 
+                           order.by.ROI.num = FALSE, 
+                           x.axis.label.shown = FALSE)
+
+print(nuclei.plot)
 
 ```
 
@@ -464,16 +478,57 @@ q3.normalization.output <- geomxNorm(
 neg.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
+
+
+# Quantile normalization
+quantile.normalization.counts <- normalize.quantiles(object.gene.filtered@assayData$exprs)
+
+dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayData$exprs)
+
+quantile.normalization.counts <- as.data.frame(quantile.normalization.counts)
     
 
-export.norm.object <- FALSE 
+export.q3norm.object <- FALSE 
 if(export.norm.object == TRUE){
   
-  object <- q3.normalization.object
+  object <- q3.normalization.output$object
+  annotation <-pData(object)
+  counts <- object@assayData$q_norm
   
-  save(object, file = paste0(params$results.folder, params$run.folder, "$normalized.object.RDA"))
+  # Save the whole object
+  save(object, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_object.RDA"))
+  
+  # Save the annota.tion
+  save(annotation, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_annotation.RDA"))
+  
+  # Save the normalized counts
+  save(counts, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_counts.RDA"))
   
 }   
+
+export.quantile.counts <- FALSE 
+if(export.norm.object == TRUE){
+  
+  counts <- quantile.normalization.counts
+  counts$gene <- rownames(counts)
+
+  annotation <-pData(object.gene.filtered)
+  annotation$sample_ID <- rownames(annotation)
+  annotation <- annotation %>% select(-loq)
+  
+  # Save the annota.tion
+  write.csv(annotation, 
+            file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_annotation.csv"), 
+            row.names = FALSE)
+  
+  # Save the normalized counts
+  write.csv(counts, 
+            file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_quantile_norm_counts.csv"), 
+            row.names = FALSE)
+  
+}   
+
+
 ```
 
 #### RLE Plots
@@ -490,13 +545,37 @@ neg.counts <- neg.normalization.output$object@assayData$neg_norm
 # Annotation
 annotation <- pData(q3.normalization.output$object)
 
+# Annotation to groupo by
+annotation.facet <- "slide_name"
+
+# The ammount to subsample, with 1 being no subsampling
+subsample.ammount <- 0.2
+
 raw.rle <- make_rle_plot(counts = raw.counts, 
                          annotation = annotation, 
-                         annotation.facet = "region")
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
 
 q3.rle <- make_rle_plot(counts = q3.counts, 
                          annotation = annotation, 
-                         annotation.facet = "region")
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+neg.rle <- make_rle_plot(counts = neg.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+quant.rle <- make_rle_plot(counts = quantile.normalization.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+
+print(raw.rle)
+print(q3.rle)
+print(neg.rle)
+print(quant.rle)
 
 
 
@@ -511,7 +590,7 @@ q3.rle <- make_rle_plot(counts = q3.counts,
 #| message: false
 
 # The raw counts boxplot
-transform1.raw<- exprs(q3.normalization.object[,1:30])
+transform1.raw<- exprs(q3.normalization.output$object[,1:30])
 transform2.raw<- as.data.frame(transform1.raw)
 transform3.raw<- melt(transform2.raw)
 ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
@@ -524,9 +603,9 @@ ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
   scale_x_discrete(labels=c(1:30))
 
 # The Q3 normalized counts boxplot
-transform1.norm<- assayDataElement(q3.normalization.object[,1:30], elt = "q_norm")
-transform2.norm<- as.data.frame(transform1.norm)
-transform3.norm<- melt(transform2.norm)
+transform1.norm <- assayDataElement(q3.normalization.output$object[,1:30], elt = "q_norm")
+transform2.norm <- as.data.frame(transform1.norm)
+transform3.norm <- melt(transform2.norm)
 ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
   stat_boxplot(geom = "errorbar") +
   geom_boxplot(fill="cadetblue2") +
@@ -537,9 +616,9 @@ ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
   scale_x_discrete(labels=c(1:30))
 
 # The Negative normalized counts boxplot
-transform1.norm<- assayDataElement(neg.normalization.object[,1:30], elt = "neg_norm")
-transform2.norm<- as.data.frame(transform1.norm)
-transform3.norm<- melt(transform2.norm)
+transform1.norm <- assayDataElement(neg.normalization.output$object[,1:30], elt = "neg_norm")
+transform2.norm <- as.data.frame(transform1.norm)
+transform3.norm <- melt(transform2.norm)
 ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
   stat_boxplot(geom = "errorbar") +
   geom_boxplot(fill="indianred") +
@@ -549,9 +628,22 @@ ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
   ggtitle("Neg Norm Counts") +
   scale_x_discrete(labels=c(1:30))
 
+# The Negative normalized counts boxplot
+transform1.norm <- quantile.normalization.counts[,1:30]
+transform2.norm <- melt(transform1.norm)
+ggboxplot.quantnorm <- ggplot(transform2.norm, aes(variable, value)) +
+  stat_boxplot(geom = "errorbar") +
+  geom_boxplot(fill="darkseagreen") +
+  scale_y_log10() +
+  xlab("Example AOIs") + 
+  ylab("Counts, Neg. Normalized") +
+  ggtitle("Neg Norm Counts") +
+  scale_x_discrete(labels=c(1:30))
+
 print(ggboxplot.raw)
 print(ggboxplot.q3norm)
 print(ggboxplot.negnorm)
+print(ggboxplot.quantnorm)
 
 
 ```
@@ -569,6 +661,7 @@ object.neg <- neg.normalization.output$object
 # Gather the the normalized counts
 q3.norm.counts.df <- as.data.frame(object.q3@assayData$q_norm)
 neg.norm.counts.df <- as.data.frame(object.neg@assayData$neg_norm)
+quant.norm.counts.df <- quantile.normalization.counts
 
 # Convert counts to log2
 q3.log.counts.df <- q3.norm.counts.df %>% 
@@ -577,11 +670,17 @@ q3.log.counts.df <- q3.norm.counts.df %>%
 neg.log.counts.df <- neg.norm.counts.df %>% 
   mutate_all(~ log2(.)) %>% 
   rename_all(~ gsub("\\.dcc", "", .))
+quant.log.counts.df <- quant.norm.counts.df %>% 
+  mutate_all(~ log2(.)) %>% 
+  rename_all(~ gsub("\\.dcc", "", .))
+
 
 # Remove the negative controls from the log counts
 control.probes <- c("NegProbe-WTX")
 q3.log.counts.df <- q3.log.counts.df[!(rownames(q3.log.counts.df) %in% control.probes), ]
 neg.log.counts.df <- neg.log.counts.df[!(rownames(neg.log.counts.df) %in% control.probes), ]
+quant.log.counts.df <- quant.log.counts.df[!(rownames(quant.log.counts.df) %in% control.probes), ]
+
 
 # Load the annotation (same for both normalization types)
 annotation <- pData(object.q3)
@@ -594,6 +693,7 @@ cleaned.annotation.df <- cleaned.annotation.df[order(rownames(cleaned.annotation
 
 q3.log.counts.df <- q3.log.counts.df[order(colnames(q3.log.counts.df))]
 neg.log.counts.df <- neg.log.counts.df[order(colnames(neg.log.counts.df))]
+quant.log.counts.df <- quant.log.counts.df[order(colnames(quant.log.counts.df))]
 
 # Remove .dcc from Sample ID row names
 cleaned.annotation.df <- cleaned.annotation.df %>% `rownames<-`(sub("\\.dcc", "", rownames(.)))
@@ -605,7 +705,9 @@ q3.pca.table <- pca(q3.log.counts.df,
 neg.pca.table <- pca(neg.log.counts.df, 
                  metadata = cleaned.annotation.df, 
                  removeVar = 0.1)
-
+quant.pca.table <- pca(quant.log.counts.df, 
+                 metadata = cleaned.annotation.df, 
+                 removeVar = 0.1)
 
 ```
 
@@ -771,12 +873,14 @@ print(neg.pca.plot.slide)
 pre.norm.counts <-
   log(as.data.frame(q3.normalization.output$object@assayData$exprs), base = 2)
 
-post.q3norm.counts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
+post.q3norm.logcounts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
 
-post.negnorm.counts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
+post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
+
+quantile.normalization.logcounts <- log(quantile.normalization.counts, base = 2)
 
 # Setup annotation groups for the ratio "M" (log A - log B)
-region.types <- c("region_A", "region_B")
+region.types <- c("DKD", "normal")
 
 # Define the name of the contrast
 contrast.name <- paste0(region.types[[1]], 
@@ -784,9 +888,9 @@ contrast.name <- paste0(region.types[[1]],
                         region.types[[2]])
 
 # Set up the annotations and raw counts for the MA plots
-contrast.field <- "region"
-condition.label <- "region_A"
-reference.label <- "region_B"
+contrast.field <- "class"
+condition.label <- "DKD"
+reference.label <- "normal"
 raw.log.counts <- pre.norm.counts
 annotation.MA <- annotation
 ```
@@ -795,7 +899,7 @@ annotation.MA <- annotation
 
 ```{r MA Plot Q3, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 # MA plots for two annotation groups to evaluate negative normalization
-log.counts <- post.q3norm.counts
+log.counts <- post.q3norm.logcounts
 
 MA.plots.q3 <- make_MA(contrast.field = contrast.field, 
                        condition.label = condition.label, 
@@ -810,12 +914,10 @@ grid.draw(MA.plots.q3)
 
 #### Negative Normalization
 
-grid.draw(MA.plots.neg)
-
 ```{r MA Plot Neg, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 
 # MA plots for two annotation groups to evaluate negative normalization
-log.counts <- post.negnorm.counts
+log.counts <- post.negnorm.logcounts
 
 MA.plots.neg <- make_MA(contrast.field = contrast.field, 
                     condition.label = condition.label, 
@@ -826,4 +928,24 @@ MA.plots.neg <- make_MA(contrast.field = contrast.field,
   
   
 grid.draw(MA.plots.neg)
+```
+
+#### Quantile Normalization
+
+```{r MA Plot Quant, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
+
+# MA plots for two annotation groups to evaluate negative normalization
+log.counts <- quantile.normalization.logcounts
+
+MA.plots.quant <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = log.counts, 
+                    raw.log.counts = raw.log.counts, 
+                    annotation = annotation.MA)
+  
+  
+grid.draw(MA.plots.quant)
+
+
 ```
