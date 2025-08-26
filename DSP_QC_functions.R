@@ -1240,34 +1240,39 @@ gene_counts_violin_boxplot <- function(counts,
   
 }
 
-
-multi_boxplot <- function(counts.annotation.df, 
-                          group.field, 
-                          group.values, 
-                          subgroup.field,
-                          subgroup.values,
-                          target.description.df,
-                          fill.field, 
-                          fill.values, 
-                          fill.colors, 
-                          custom.target.order){
+# Create biplots for PCA of all three normalization types 
+# Assumes there are three PCA outputs in the PCA.table.list
+PCA_biplots <- function(pca.table.list, 
+                        color.group) {
   
-  # Check that the fill colors and values match
-  fill.diff <- setdiff(fill.values, names(fill.colors))
-  if(length(fill.diff) > 0){
+  plot.list <- list()
+  
+  for(norm.type in names(pca.table.list)){
     
-    print("Difference between fill values and fill colors vector names: ")
-    print(fill.diff)
+    pca.table <- pca.table.list[[norm.type]]
+    
+    pca.plot <- biplot(pca.table, 
+                       colby = color.group, 
+                       legendPosition = "right", 
+                       legendLabSize = 10, 
+                       legendIconSize = 5, 
+                       lab = NULL,
+                       title = paste0(norm.type, " Normalization"))
+    
+    plot.list[[norm.type]] <- pca.plot
     
   }
   
-  # Subset the counts for only the specified groups and fill values
-  counts.annotation.subset <- counts.annotation.df %>% 
-    filter(.data[[group.field]] %in% group.values) %>% 
-    filter(.data[[subgroup.field]] %in% subgroup.values)
+  combined.plot <- plot_grid(plot.list[[1]], 
+                             plot.list[[2]], 
+                             plot.list[[3]], 
+                             ncol = 2,
+                             nrow = 2)
   
-  # Check that the group and fill values are found in the data
-  group.diff<- setdiff(group.values, )
+  plot.list[["combo.plot"]] <- combined.plot
   
+  return(plot.list)
   
 }
+
+
