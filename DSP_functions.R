@@ -594,7 +594,8 @@ make_volcano <- function(lmm.results,
       geom_point(size = 2) +
       scale_color_manual(legend.title, 
                          values = contrast.level.colors) + 
-      geom_text_repel(max.overlaps = Inf) + 
+      geom_text_repel(max.overlaps = Inf, 
+                      show.legend = FALSE) + 
       xlim(-log2.scale-1, log2.scale+1) + 
       theme(plot.title = element_text(hjust = 0.5))
     
