@@ -319,8 +319,9 @@ upsetr_plot <- function(object,
                                 set_sizes=(upset_set_size() + 
                                              geom_text(aes(label=..count..),
                                                        hjust=1.1, stat='count') +
-                                             expand_limits(y=nrow(upset.df)) +
-                                             theme(axis.text.x=element_text(angle=90))))
+                                             expand_limits(y=nrow(upset.df)))) + 
+                                theme(axis.text.x=element_text(angle=90))
+              
   
   
   return(AOI.inter.count.plot)
@@ -610,12 +611,13 @@ gene_detection <- function(object,
               "detect.loss.plot" = detect.loss.plot))
 }
 
-aoi_detection <- function(object){
+aoi_detection <- function(object, 
+                          facet.annotation = "region"){
   
   # stacked bar plot of different cut points (1%, 5%, 10%, 15%)
   detection.bar.plot <- ggplot(pData(object),
                                aes(x = DetectionThreshold)) +
-    geom_bar(aes(fill = region)) +
+    geom_bar(aes(fill = !!sym(facet.annotation))) +
     geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
     theme_bw() +
     scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
