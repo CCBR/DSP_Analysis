@@ -10,4 +10,7 @@ Desktop.ini
 .Rhistory
 .RData
 .Ruserdata
-
+renv/
+.RDataTmp
+.Rprofile
+.keepfolder
