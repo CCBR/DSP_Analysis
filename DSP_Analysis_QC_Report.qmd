@@ -398,7 +398,7 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```{r Write QC output}
 
-write.qc.file <- TRUE
+write.qc.file <- FALSE
 
 if(write.qc.file == TRUE){
   
