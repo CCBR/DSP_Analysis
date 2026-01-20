@@ -46,47 +46,64 @@ subset_counts_for_lmm <- function(counts,
 }
 
 subset_object_for_lmm <- function(object, 
-                                  subset.list){ 
+                                  subset.group.1,
+                                  subset.group.2){ 
   
   # Set up the object to subset
   subset.object <- object
   
-  # Subset the object based on the given annotations
-  for(column in names(subset.list)){ 
+  # Get the annotation
+  annotation <- pData(object)
+  
+  
+  # Get the AOIs for the first group
+  subset.1.annotation <- annotation
+  
+  for(field in names(subset.group.1)){
     
-    subset.indices <- pData(subset.object)[[column]] %in% subset.list[[column]]
-    subset.object <- subset.object[, subset.indices]
-    
-    # Factor the columns with relevant annotations
-    pData(subset.object)[[column]] <- factor(pData(subset.object)[[column]])
+    values <- subset.group.1[field]
+
+    subset.1.annotation <- subset.1.annotation %>%
+      filter(.data[[field]] %in% values)
     
   }
   
-  # Factor the slide column
-  pData(subset.object)[["slide_name"]] <- 
-    factor(pData(subset.object)[["slide_name"]])
+  # Final AOI list for the first group
+  subset.1.AOIs <- rownames(subset.1.annotation)
   
-  # Create log2 counts
+  # Gather the AOIs for the second group
+  subset.2.annotation <- annotation
+  
+  for(field in names(subset.group.2)){
+    
+    values <- subset.group.2[field]
+
+    subset.2.annotation <- subset.2.annotation %>%
+      filter(.data[[field]] %in% values)
+    
+  }
+  
+  # Final AOI list for the second group
+  subset.2.AOIs <- rownames(subset.2.annotation)
+  
+  # Combine into a total AOI list
+  subset.AOIs <- c(subset.1.AOIs, subset.2.AOIs)
+  
+  # Create the subset returns
+  subset.object <- object[,subset.AOIs]
+  
+  subset.annotation <- pData(subset.object)
+  subset.annotation$sampleID <- gsub(".dcc", "", rownames(subset.annotation))
+  
+  # Create log2 counts for normalized and raw
   assayDataElement(object = subset.object, elt = "log_q") <-
     assayDataApply(subset.object, 2, FUN = log, base = 2, elt = "q_norm")
   
   assayDataElement(object = subset.object, elt = "log_raw") <-
     assayDataApply(subset.object, 2, FUN = log, base = 2, elt = "exprs")
   
-  
-  # Gather the log counts and annotation to return
-  log.counts <- subset.object@assayData$log_q
-  raw.log.counts <- subset.object@assayData$log_raw
-  annotation.df <- pData(subset.object)
-  
-  # Replace all bad characters in column names
-  annotation.df <- annotation.df %>%
-    rename_all(~str_replace_all(., " ", "_"))
-  
   return(list("subset.object" = subset.object, 
-              "log.counts" = log.counts, 
-              "raw.log.counts" = raw.log.counts, 
-              "annotation" = annotation.df))
+              "subset.annotation" = subset.annotation))
   
 }
 
