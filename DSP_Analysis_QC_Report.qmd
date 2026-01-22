@@ -126,23 +126,6 @@ print(sankey.output$sankey.plot)
 print(sankey.output$AOI.bar.plot)
 ```
 
-@fig-upsetr shows the size of annotation groups
-
-```{r UpsetR Plot, fig.width=12, fig.height=8}
-#| label: fig-upsetr
-#| fig-cap: "UpSetR Plot"
-#| warning: false
-
-upsetr.plot <- upsetr_plot(object = init.object, 
-                           annotation.groups = c("class", 
-                                                 "region", 
-                                                 "segment"))
-
-print(upsetr.plot)
-
-
-```
-
 ## QC and Filtering
 
 ```{r QC and Filtering}
