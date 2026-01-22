@@ -291,6 +291,8 @@ upsetr_plot <- function(object,
     
   }
   
+  all.group.values <- all.group.values[!is.na(all.group.values)]
+  
   # Create the upset df with all FALSE values
   upset.df <- as.data.frame(matrix(FALSE, nrow = nrow(pData(object)), 
                                    ncol = length(all.group.values)))
@@ -300,6 +302,8 @@ upsetr_plot <- function(object,
   
   # Subset the annotation for only the relevant columns for upsetr
   anno.subset <- pData(object) %>% select(all_of(annotation.groups))
+  
+  anno.subset <- na.omit(anno.subset)
   
   # For each row in the annotation data, if it contains the value of a column in the upsetr plot mark as TRUE
   for (i in 1:nrow(anno.subset)) {
@@ -315,8 +319,9 @@ upsetr_plot <- function(object,
                                 set_sizes=(upset_set_size() + 
                                              geom_text(aes(label=..count..),
                                                        hjust=1.1, stat='count') +
-                                             expand_limits(y=nrow(upset.df)) +
-                                             theme(axis.text.x=element_text(angle=90))))
+                                             expand_limits(y=nrow(upset.df)))) + 
+                                theme(axis.text.x=element_text(angle=90))
+              
   
   
   return(AOI.inter.count.plot)
@@ -498,7 +503,6 @@ gene_detection <- function(object,
     # A master df to hold all feature (gene) detection for facet values
     feature.detect.facet.df <- data.frame(feature = rownames(fData(object)))
     
-    
     # Gather the IDs for each facet value
     for(value in facet.values){
       
@@ -516,12 +520,18 @@ gene_detection <- function(object,
       # Compute the detection for each feature
       value.feature.df <- data.frame(feature = rownames(fData(object)))
       
-      value.feature.df[[value]] <- 100*(rowSums(loq.mat.value, na.rm = TRUE)/total.AOIs)
+      # Check if there are enough AOIs for the value
+      if(length(dim(loq.mat.value)) > 1){
+        
+        value.feature.df[[value]] <- 100*(rowSums(loq.mat.value, na.rm = TRUE)/total.AOIs)
+        
+        # Add the detection per feature for this value to the master df
+        feature.detect.facet.df <- merge(feature.detect.facet.df, 
+                                         value.feature.df, 
+                                         by = "feature")
+        
+      }
       
-      # Add the detection per feature for this value to the master df
-      feature.detect.facet.df <- merge(feature.detect.facet.df, 
-                                       value.feature.df, 
-                                       by = "feature")
     }
     
     # Melt the feature detect facet df for easier ggplot faceting
@@ -601,12 +611,13 @@ gene_detection <- function(object,
               "detect.loss.plot" = detect.loss.plot))
 }
 
-aoi_detection <- function(object){
+aoi_detection <- function(object, 
+                          facet.annotation = "region"){
   
   # stacked bar plot of different cut points (1%, 5%, 10%, 15%)
   detection.bar.plot <- ggplot(pData(object),
                                aes(x = DetectionThreshold)) +
-    geom_bar(aes(fill = region)) +
+    geom_bar(aes(fill = !!sym(facet.annotation))) +
     geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
     theme_bw() +
     scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
@@ -1231,34 +1242,39 @@ gene_counts_violin_boxplot <- function(counts,
   
 }
 
-
-multi_boxplot <- function(counts.annotation.df, 
-                          group.field, 
-                          group.values, 
-                          subgroup.field,
-                          subgroup.values,
-                          target.description.df,
-                          fill.field, 
-                          fill.values, 
-                          fill.colors, 
-                          custom.target.order){
+# Create biplots for PCA of all three normalization types 
+# Assumes there are three PCA outputs in the PCA.table.list
+PCA_biplots <- function(pca.table.list, 
+                        color.group) {
   
-  # Check that the fill colors and values match
-  fill.diff <- setdiff(fill.values, names(fill.colors))
-  if(length(fill.diff) > 0){
+  plot.list <- list()
+  
+  for(norm.type in names(pca.table.list)){
     
-    print("Difference between fill values and fill colors vector names: ")
-    print(fill.diff)
+    pca.table <- pca.table.list[[norm.type]]
+    
+    pca.plot <- biplot(pca.table, 
+                       colby = color.group, 
+                       legendPosition = "right", 
+                       legendLabSize = 10, 
+                       legendIconSize = 5, 
+                       lab = NULL,
+                       title = paste0(norm.type, " Normalization"))
+    
+    plot.list[[norm.type]] <- pca.plot
     
   }
   
-  # Subset the counts for only the specified groups and fill values
-  counts.annotation.subset <- counts.annotation.df %>% 
-    filter(.data[[group.field]] %in% group.values) %>% 
-    filter(.data[[subgroup.field]] %in% subgroup.values)
+  combined.plot <- plot_grid(plot.list[[1]], 
+                             plot.list[[2]], 
+                             plot.list[[3]], 
+                             ncol = 2,
+                             nrow = 2)
   
-  # Check that the group and fill values are found in the data
-  group.diff<- setdiff(group.values, )
+  plot.list[["combo.plot"]] <- combined.plot
   
+  return(plot.list)
   
 }
+
+

@@ -1,0 +1,16 @@
+
+# MacOS
+.DS_Store
+Thumbs.db
+# Windows
+ehthumbs.db
+Desktop.ini
+# RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+renv/
+.RDataTmp
+.Rprofile
+.keepfolder

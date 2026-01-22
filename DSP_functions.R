@@ -20,12 +20,12 @@ subset_counts_for_lmm <- function(counts,
     subset.annotation <- subset.annotation %>% 
       filter(.[[column]] %in% subset.list[[column]])
     
-    subset.IDs <- subset.annotation$Sample_ID
+    subset.IDs <- subset.annotation$sample_ID
     
     subset.columns <- c("gene", subset.IDs)
     
     subset.counts <- subset.counts %>% 
-      select(all_of(subset.columns))
+      dplyr::select(all_of(subset.columns))
     
     # Factor the columns with relevant annotations
     subset.annotation[[column]] <- factor(subset.annotation[[column]])
@@ -93,8 +93,6 @@ subset_object_for_lmm <- function(object,
 
 run_limma <- function(counts, 
                       annotation, 
-                      include.slide, 
-                      within.slide, 
                       contrast, 
                       contrast.levels){
   
@@ -102,39 +100,20 @@ run_limma <- function(counts,
   DGE.list <- DGEList(counts = counts, 
                       samples = annotation)
   
-  if(include.slide == FALSE){ 
-    # Create the LM model design
-    design <- model.matrix(formula(paste0("~ 0 + ", contrast)), 
-                           data = DGE.list$samples)
-    
-  } else {
-    
-    if(within.slide == TRUE){ 
-      # For within slide we use a random slope in the mixed effect
-      
-      # Create the LM model design with slide as a mixed effect
-      design <- model.matrix(formula(paste0("~ 1 + ", 
-                                            contrast, 
-                                            " + (1 + " , 
-                                            contrast, 
-                                            " | slide_name)")), 
-                             data = DGE.list$samples)
-      
-    } else{
-      # For between slide we use slide in the mixed effect, no random slope
-      
-      # Create the LM model design with slide as a mixed effect
-      design <- model.matrix(formula(paste0("~ 1 + ", 
-                                            contrast, 
-                                            " + (1 | slide_name)")), 
-                             data = DGE.list$samples)
-    }
-    
-  }
+  # Create the LM model design
+  design <- model.matrix(formula(paste0("~ 0 + ", contrast)), 
+                         data = DGE.list$samples)
   
+  # Gather slide correlation for using random effect
+  corfit <- duplicateCorrelation(DGE.list$counts, 
+                                 design, 
+                                 block = DGE.list$samples$slide_name)
   
-  # Create the fit for the model
-  fit <- lmFit(DGE.list$counts, design)
+  # Fit model with blocking (adjust for slide variance)
+  fit <- lmFit(DGE.list$counts, 
+               design, 
+               block = DGE.list$samples$slide_name, 
+               correlation = corfit$consensus)
   
   # Set up the contrast
   contrast.level.ref <- paste0(contrast, contrast.levels[[1]])
@@ -265,12 +244,12 @@ make_MA <- function(contrast.field,
   
   # Create a new data frame of the gene and group means with M and A values
   normalized.counts <- merge(condition.counts, reference.counts, by = "gene") %>% 
-    select(gene, cond_mean, ref_mean) %>% 
+    dplyr::select(gene, cond_mean, ref_mean) %>% 
     mutate(M.value = cond_mean - ref_mean) %>% 
     mutate(A.value = (cond_mean + ref_mean)/2)
   
   raw.counts <- merge(condition.raw.counts, reference.raw.counts, by = "gene") %>% 
-    select(gene, cond_raw_mean, ref_raw_mean) %>% 
+    dplyr::select(gene, cond_raw_mean, ref_raw_mean) %>% 
     mutate(M.raw.value = cond_raw_mean - ref_raw_mean) %>% 
     mutate(A.raw.value = (cond_raw_mean + ref_raw_mean)/2)
   
@@ -513,7 +492,7 @@ gsea_preranked_list <- function(contrast.field,
   contrast.A.sampleIDs <- rownames(contrast.A.annotation)
   
   contrast.A.counts <- as.data.frame(log.counts) %>% 
-    select(all_of(contrast.A.sampleIDs))
+    dplyr::select(all_of(contrast.A.sampleIDs))
   
   contrast.A.counts$gene <- rownames(contrast.A.counts)
   
@@ -525,7 +504,7 @@ gsea_preranked_list <- function(contrast.field,
   contrast.B.sampleIDs <- rownames(contrast.B.annotation)
   
   contrast.B.counts <- as.data.frame(log.counts) %>% 
-    select(all_of(contrast.B.sampleIDs))
+    dplyr::select(all_of(contrast.B.sampleIDs))
   
   contrast.B.counts$gene <- rownames(contrast.B.counts)
   
@@ -543,7 +522,7 @@ gsea_preranked_list <- function(contrast.field,
   GSEA.preanked.df <- GSEA.preanked.df %>% 
     mutate(signal2noise = (mean.A - mean.B)/(stdev.A + stdev.B)) %>% 
     arrange(desc(signal2noise)) %>% 
-    select(c(gene, mean.A, mean.B, stdev.A, stdev.B, signal2noise))
+    dplyr::select(c(gene, mean.A, mean.B, stdev.A, stdev.B, signal2noise))
   
   return(GSEA.preanked.df)
   
@@ -615,7 +594,8 @@ make_volcano <- function(lmm.results,
       geom_point(size = 2) +
       scale_color_manual(legend.title, 
                          values = contrast.level.colors) + 
-      geom_text_repel(max.overlaps = Inf) + 
+      geom_text_repel(max.overlaps = Inf, 
+                      show.legend = FALSE) + 
       xlim(-log2.scale-1, log2.scale+1) + 
       theme(plot.title = element_text(hjust = 0.5))
     
@@ -685,7 +665,8 @@ make_dual_volcano <- function(lmm.results.1,
                               fc.limit = 1, 
                               pos.label.limit = 1, 
                               neg.label.limit = -1, 
-                              custom.gene.labels = NULL){
+                              custom.gene.labels = NULL, 
+                              legend.coordinates = NULL){
   
   # A combined list of the two results
   lmm.results.list <- list()
@@ -743,36 +724,91 @@ make_dual_volcano <- function(lmm.results.1,
   
   
   # Make the plot
-  dual.volcano.plot <- ggplot(data = lmm.results.combine, 
-                              aes(x = logfc, 
-                                  y = neg.log10.pval, 
-                                  col = de_direction, 
-                                  label = deglabel)) +
-    geom_vline(xintercept = c(-fc.limit, fc.limit), 
-               col = "darkgray", 
-               linetype = 'dashed') + 
-    geom_vline(xintercept = 0, 
-               col = "black") + 
-    geom_hline(yintercept = c(-log10(0.05), -(-log10(0.05))), 
-               col = "darkgray", 
-               linetype = 'dashed') + 
-    geom_hline(yintercept = 0, 
-               col = "black") + 
-    xlim(-log2.scale - 1, log2.scale + 1) + 
-    scale_y_continuous(
-      limits = c(-pval.scale, pval.scale),
-      breaks = y.axis.breaks,
-      labels = abs(y.axis.breaks)) + 
-    labs(x = x.axis.title,
-         y = "-log10 adjusted p-value", 
-         title = title) + 
-    geom_point(size = 2, alpha = 0.7) +
-    scale_color_manual(legend.title, 
-                       values = contrast.level.colors) + 
-    geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
-    theme(plot.title = element_text(hjust = 0.5), 
-          ) + 
-    theme_linedraw()
+  if(is.null(legend.coordinates)){
+    
+    dual.volcano.plot <- ggplot(data = lmm.results.combine, 
+                                aes(x = logfc, 
+                                    y = neg.log10.pval, 
+                                    col = de_direction, 
+                                    label = deglabel)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), 
+                 col = "darkgray", 
+                 linetype = 'dashed') + 
+      geom_vline(xintercept = 0, 
+                 col = "black") + 
+      geom_hline(yintercept = c(-log10(0.05), -(-log10(0.05))), 
+                 col = "darkgray", 
+                 linetype = 'dashed') + 
+      geom_hline(yintercept = 0, 
+                 col = "black") + 
+      xlim(-log2.scale - 0.2, log2.scale + 0.2) + 
+      scale_y_continuous(
+        limits = c(-pval.scale, pval.scale),
+        breaks = y.axis.breaks,
+        labels = abs(y.axis.breaks)) + 
+      labs(x = x.axis.title,
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2, alpha = 0.7) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors) + 
+      geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+      theme(plot.title = element_text(hjust = 0.5), 
+            legend.title = element_text(face = "bold"), 
+            axis.title = element_text(face = "bold")) + 
+      theme_linedraw()
+    
+  } else {
+    
+    
+    dual.volcano.plot <- ggplot(data = lmm.results.combine, 
+                                aes(x = logfc, 
+                                    y = neg.log10.pval, 
+                                    col = de_direction, 
+                                    label = deglabel)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), 
+                 col = "darkgray", 
+                 linetype = 'dashed') + 
+      #geom_vline(xintercept = 0, 
+      #           col = "black", 
+      #           linetype = 'dashed') + 
+      geom_hline(yintercept = c(-log10(0.05), -(-log10(0.05))), 
+                 col = "darkgray", 
+                 linetype = 'dashed') + 
+      scale_y_continuous(
+        limits = c(-pval.scale, pval.scale),
+        breaks = y.axis.breaks,
+        labels = abs(y.axis.breaks)) + 
+      scale_x_continuous(limits = c(-log2.scale, log2.scale),
+                         breaks = seq(-log2.scale, log2.scale, length.out = 7)) + 
+      labs(x = x.axis.title,
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2, alpha = 0.7) +
+      geom_hline(yintercept = 0, 
+                 col = "black", 
+                 linewidth = 0.5) + 
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors) + 
+      geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+      theme_linedraw() + 
+      theme(plot.title = element_text(hjust = 0.5), 
+            legend.position="inside", 
+            legend.position.inside = legend.coordinates, 
+            legend.justification = c(1, 1), 
+            legend.box.background = element_rect(
+              colour = "black", 
+              linewidth = 0.5,  
+              fill = "white"
+            ), 
+            legend.title = element_text(face = "bold"), 
+            axis.title = element_text(face = "bold"), 
+            panel.grid = element_blank())
+      
+    
+  }
+  
+  
   
   #dual.volcano.labeled <- ggdraw() +
   #  draw_plot(dual.volcano.plot, x = 0.02, width = 0.95) +  # Move the plot slightly right
