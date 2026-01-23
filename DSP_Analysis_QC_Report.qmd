@@ -126,23 +126,6 @@ print(sankey.output$sankey.plot)
 print(sankey.output$AOI.bar.plot)
 ```
 
-@fig-upsetr shows the size of annotation groups
-
-```{r UpsetR Plot, fig.width=12, fig.height=8}
-#| label: fig-upsetr
-#| fig-cap: "UpSetR Plot"
-#| warning: false
-
-upsetr.plot <- upsetr_plot(object = init.object, 
-                           annotation.groups = c("class", 
-                                                 "region", 
-                                                 "segment"))
-
-print(upsetr.plot)
-
-
-```
-
 ## QC and Filtering
 
 ```{r QC and Filtering}
@@ -470,7 +453,7 @@ print(nuclei.plot)
 
 ```{r Normalization, warning=FALSE, message=FALSE}
 
-q3.normalization.output <- geomxNorm(
+qq3.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "q3")
     
@@ -479,55 +462,62 @@ neg.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
 
+# Set up the mapping df for AOI IDs
+mapping.df.segmentID <- data.frame(sample_ID = rownames(annotation), 
+                         segmentID = annotation$segmentID)
+
+
+# Q3 normalization clean up
+object <- q3.normalization.output$object
+q3.counts <- as.data.frame(object@assayData$q_norm)
+  
+# Add genes as a column and move to the left
+q3.counts$gene <- rownames(q3.counts)
+q3.counts <- q3.counts %>% 
+  select(gene, everything())
+
+# Replace the sampleID column names with human readable AOI ID
+colnames(q3.counts)[match(mapping.df.segmentID$sample_ID, colnames(q3.counts))] <- mapping.df.segmentID$segmentID
 
 # Quantile normalization
 quantile.normalization.counts <- normalize.quantiles(object.gene.filtered@assayData$exprs)
-
 dimnames(quantile.normalization.counts) = dimnames(object.gene.filtered@assayData$exprs)
-
 quantile.normalization.counts <- as.data.frame(quantile.normalization.counts)
     
+# Add genes as a column and move to the left
+quantile.norm.reformat <- quantile.normalization.counts
+quantile.norm.reformat$gene <- rownames(quantile.normalization.counts)
+quantile.norm.reformat <- quantile.norm.reformat %>% 
+  select(gene, everything())
 
-export.q3norm.object <- FALSE 
+# Replace the sampleID column names with human readable AOI ID
+colnames(quantile.norm.reformat)[match(mapping.df.segmentID$sample_ID, colnames(quantile.norm.reformat))] <- mapping.df.segmentID$segmentID
+
+
+
+export.norm.object <- FALSE
 if(export.norm.object == TRUE){
   
-  object <- q3.normalization.output$object
-  annotation <-pData(object)
-  counts <- object@assayData$q_norm
+  quant.counts <- quantile.norm.reformat
   
-  # Save the whole object
-  save(object, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_object.RDA"))
-  
-  # Save the annota.tion
-  save(annotation, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_annotation.RDA"))
-  
-  # Save the normalized counts
-  save(counts, file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_normalized_counts.RDA"))
-  
-}   
-
-export.quantile.counts <- FALSE 
-if(export.norm.object == TRUE){
-  
-  counts <- quantile.normalization.counts
-  counts$gene <- rownames(counts)
-
   annotation <-pData(object.gene.filtered)
   annotation$sample_ID <- rownames(annotation)
   annotation <- annotation %>% select(-loq)
   
-  # Save the annota.tion
-  write.csv(annotation, 
-            file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_annotation.csv"), 
+  # Save the whole object for Q3 normalized counts
+  save(object, file = paste0(params$results.folder, 
+                             params$dataset.name, "_q3normalized_object_skin.RDA"))
+  
+  write.csv(q3.counts, file = paste0(params$results.folder, 
+                                  params$dataset.name, "_q3normalized_counts_skin.csv"), 
             row.names = FALSE)
   
-  # Save the normalized counts
-  write.csv(counts, 
-            file = paste0(params$results.folder, params$run.folder, params$dataset.name, "_quantile_norm_counts.csv"), 
+  # Save the quantile normalized.counts
+  write.csv(quant.counts, file = paste0(params$results.folder, 
+                                  params$dataset.name, "_quantnormalized_counts_skin.csv"), 
             row.names = FALSE)
   
 }   
-
 
 ```
 
@@ -863,6 +853,119 @@ neg.pca.plot.slide <- biplot(neg.pca.table,
 
 print(neg.pca.plot.slide)
 
+```
+
+#### Export PCA tables
+
+```{r PCA Exports}
+
+# Function for subsetting samples
+subset.counts.annotation <- function(counts, 
+                                     annotation,
+                                     subset.field, 
+                                     subset.values){
+  
+  
+  # Subset the annotation and get the AOI list
+  annotation.subset <- annotation %>% 
+    filter(.data[[subset.field]] %in% subset.values)
+  
+  
+  aoi.subset.list <- rownames(annotation.subset)
+  
+  # Subset the counts
+  counts.subset <- counts %>% 
+    select(all_of(aoi.subset.list))
+  
+  return(list("annotation.subset" = annotation.subset, 
+              "counts.subset" = counts.subset))
+  
+}
+
+# A list of all the PCA tables to generate with their corresponding subset specifications
+whole.subset.list <- list(
+  All = list(class = c("DKD", "normal")), 
+  DKD = list(class = c("DKD")), 
+  Normal = list(class = c("normal")), 
+  Glomerulus = list(region = c("glomerulus")), 
+  Tubule = list(region = c("tubule")), 
+  Abnormal_Glomerulus = list(region = "glomerulus", 
+                             pathology = "abnormal")
+)
+
+# A list to hold all subsetted counts and annotations
+subset.df.list <- list()
+
+# Normalization type to use
+normalized.log.counts <- q3.log.counts.df
+
+# Each subset group will be it's own PCA table
+for(subset.group in names(whole.subset.list)){
+  
+  subset.list <- whole.subset.list[[subset.group]]
+  
+  # Set up the annotaiton and counts to subset
+  annotation.subset <- cleaned.annotation.df
+  counts.subset <- normalized.log.counts
+  
+  counts.annotation.list <- list()
+  
+  # Subset by all columns and values
+  for(column in names(subset.list)) {
+    
+    column.values <- subset.list[[column]]
+    
+    annotation.subset <- annotation.subset %>% 
+      filter(.data[[column]] %in% column.values)
+    
+    aoi.subset.list <- rownames(annotation.subset)
+  
+    counts.subset <- counts.subset %>% 
+      select(all_of(aoi.subset.list))
+    
+  }
+  
+  counts.annotation.list$annotation <- annotation.subset
+  counts.annotation.list$counts <- counts.subset
+  
+  subset.df.list[[subset.group]] <- counts.annotation.list
+  
+}
+
+normal.pca <- pca(subset.df.list$Normal$counts, 
+                  metadata = subset.df.list$Normal$annotation, 
+                  removeVar = 0.1)
+
+# Run pca and export if needed
+ 
+pca.data.list <- list()
+  
+for(df.name in names(subset.df.list)){
+  
+  df.data.list <- subset.df.list[[df.name]]
+  
+  pca.data <- pca(df.data.list$counts, 
+                  metadata = df.data.list$annotation, 
+                  removeVar = 0.1)
+  
+  pca.data.list[[df.name]] <- pca.data
+  
+}
+
+export = FALSE
+if(export){
+  
+  for(pca.df.name in names(pca.data.list)){
+    
+    pca.df <- pca.data.list[[pca.df.name]]
+    
+    save(pca.df, file = paste0(params$results.folder, "pca/", 
+                               pca.df.name, "_PCA.RDA"))
+    
+  }
+  
+}
+   
 ```
 
 ### MA Plots
