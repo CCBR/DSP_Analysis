@@ -456,6 +456,9 @@ print(nuclei.plot)
 q3.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "q3")
+
+# Add a fixed value for user in DE comparisons
+pData(q3.normalization.output$object)$fixed_value_column <- "value"
     
     
 neg.normalization.output <- geomxNorm(
