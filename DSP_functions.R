@@ -672,6 +672,236 @@ make_volcano <- function(lmm.results,
   
 }
 
+
+
+improved_make_volcano <- function(lmm.results, 
+                         title, 
+                         legend.title, 
+                         fc.limit = 1.5, 
+                         custom.gene.labels = NULL, 
+                         remove.controls = FALSE, 
+                         remove.genes = NULL, 
+                         remove.all.gene.labels = FALSE,
+                         legend.coordinates = c(.99, .01)){ 
+  
+  # Ensure that titles are characters
+  legend.title <- as.character(legend.title)
+  
+  # Remove controls if applicable
+  #if(remove.controls == TRUE){
+#    
+#    NEG.indices <- grep("NEG_", rownames(de.results))
+#    POS.indices <- grep("POS_", rownames(de.results))
+#    control.indices <- c(NEG.indices, POS.indices)
+#    
+#    # Remove the control probes
+#    de.results <- de.results[-control.indices,]
+#    
+#  } 
+  
+  # Remove custom gene input
+  if(!is.null(remove.genes)){
+    
+    lmm.results <- lmm.results[!rownames(lmm.results) %in% remove.genes, ]
+    
+  }
+  
+  
+  
+  # Create a column for direction of DEGs
+  lmm.results$de_direction <- "NONE"
+  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+                             lmm.results$logfc > fc.limit] <- "UP"
+  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+                             lmm.results$logfc < -fc.limit] <- "DOWN"
+  
+  # Create a label for DEGs
+  if(is.null(custom.gene.labels)){
+    
+    lmm.results$deglabel <- ifelse(lmm.results$de_direction == "NONE", 
+                                  NA, 
+                                  lmm.results$gene)
+    
+  } else {
+    
+    lmm.results$deglabel <- ifelse(lmm.results$gene %in% custom.gene.labels, 
+                                  lmm.results$gene, 
+                                  NA)
+    
+  }
+  
+  # Remove all gene labels, in the case of too many DEGs
+  if(remove.all.gene.labels){
+    
+    lmm.results$deglabel <- NA
+    
+  }
+  
+  
+  
+  # Compute the scale for the volcano x-axis
+  log2.scale <- ceiling(max(abs(lmm.results$logfc)))
+  
+  # Establish the color scheme for the volcano plot
+  if(is.null(custom.gene.labels)){
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
+    
+    
+    
+    if(is.null(legend.coordinates)){ 
+      
+      volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+                                                    y = -log10(padj), 
+                                                    col = de_direction, 
+                                                    label = deglabel)) +
+        geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+        geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+        labs(x = "log2 Fold Change",
+             y = "-log10 adjusted p-value", 
+             title = title) + 
+        geom_point(size = 2) +
+        scale_color_manual(legend.title, 
+                           values = contrast.level.colors, 
+                           breaks = "UP", "NONE", "DOWN") + 
+        geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+        xlim(-log2.scale-0.2, log2.scale+0.2) + 
+        theme_classic() + 
+        theme(plot.title = element_text(hjust = 0.5, 
+                                        face = "bold", 
+                                        size = 16), 
+              axis.title = element_text(face = "bold", 
+                                        size = 14), 
+              legend.position="inside", 
+              legend.position.inside = legend.coordinates, 
+              legend.justification = c(1, 0), 
+              legend.box.background = element_rect(
+                colour = "black", 
+                linewidth = 0.5,  
+                fill = "white"), 
+              legend.text = element_text(face = "bold"), 
+              legend.title = element_text(face = "bold")) + 
+        scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
+                           limits = c(-log2.scale, log2.scale))
+      
+    } else {
+      
+      
+      volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+                                                    y = -log10(padj), 
+                                                    col = de_direction, 
+                                                    label = deglabel)) +
+        geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+        geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+        labs(x = "log2 Fold Change",
+             y = "-log10 adjusted p-value", 
+             title = title) + 
+        geom_point(size = 2) +
+        scale_color_manual(legend.title, 
+                           values = contrast.level.colors, 
+                           breaks = c("UP", "NONE", "DOWN")) + 
+        geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+        theme_classic() + 
+        theme(plot.title = element_text(hjust = 0.5, 
+                                        face = "bold", 
+                                        size = 16), 
+              axis.title = element_text(face = "bold", 
+                                        size = 14), 
+              legend.position="inside", 
+              legend.position.inside = legend.coordinates, 
+              legend.justification = c(1, 0), 
+              legend.box.background = element_rect(
+                colour = "black", 
+                linewidth = 0.5,  
+                fill = "white"), 
+              legend.text = element_text(face = "bold"), 
+              legend.title = element_text(face = "bold")) + 
+        scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
+                           limits = c(-log2.scale, log2.scale))
+      
+      
+    }
+    
+    
+    
+    
+    
+  } else {
+    
+    # Label the custom genes depending on significance
+    lmm.results <- lmm.results %>% 
+      mutate(custom.label = ifelse(!is.na(deglabel) & de_direction == "NONE", 
+                                   "BLACK", 
+                                   ifelse(!is.na(deglabel) & de_direction != "NONE", 
+                                          de_direction, 
+                                          "NONE")))
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4", "black")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP", "BLACK")
+    
+    lmm.results.labeled <- lmm.results %>%
+      filter(custom.label != "NONE")
+    
+    lmm.results.unlabeled <- lmm.results %>% 
+      filter(custom.label == "NONE")
+    
+    
+    volcano.plot <- ggplot() + 
+      geom_point(data = lmm.results.unlabeled, aes(x = logfc, 
+                                                  y = -log10(padj), 
+                                                  col = custom.label, 
+                                                  alpha = 0.5)) + 
+      geom_point(data = lmm.results.labeled, aes(x = logfc, 
+                                                y = -log10(padj), 
+                                                col = custom.label, 
+                                                alpha = 1)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      labs(x = "log2 Fold Change",
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors, 
+                         breaks = c("DOWN", "UP")) + 
+      geom_text_repel(data = lmm.results.labeled,
+                      aes(x = logfc, 
+                          y = -log10(padj), 
+                          label = deglabel, 
+                          col = custom.label), 
+                      max.overlaps = Inf, 
+                      show.legend = FALSE) + 
+      scale_alpha_identity(guide = "none") + 
+      theme_classic() + 
+      theme(plot.title = element_text(hjust = 0.5, 
+                                      face = "bold", 
+                                      size = 16), 
+            axis.title = element_text(face = "bold", 
+                                      size = 14), 
+            legend.position="inside", 
+            legend.position.inside = legend.coordinates, 
+            legend.justification = c(1, 0), 
+            legend.box.background = element_rect(
+              colour = "black", 
+              linewidth = 0.5,  
+              fill = "white"), 
+            legend.text = element_text(face = "bold"), 
+            legend.title = element_text(face = "bold")) + 
+      scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
+                         limits = c(-log2.scale, log2.scale))
+    
+  }
+  
+  
+  
+  # Make the volcano plot
+  
+  
+  return(list("volcano.plot" = volcano.plot))
+  
+} 
+
 make_dual_volcano <- function(lmm.results.1, 
                               lmm.results.2,
                               lmm.results.1.label,
