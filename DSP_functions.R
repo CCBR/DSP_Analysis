@@ -61,7 +61,7 @@ subset_object_for_lmm <- function(object,
   
   for(field in names(subset.group.1)){
     
-    values <- subset.group.1[field]
+    values <- subset.group.1[[field]]
 
     subset.1.annotation <- subset.1.annotation %>%
       filter(.data[[field]] %in% values)
@@ -482,6 +482,135 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
   
   return(heatmap.plot)
   
+}
+
+make_heatmap_gene_sets <- function(normalized.log.counts.df,
+                         gene.sets,
+                         annotation.column,
+                         annotation.row = NULL,
+                         anno.colors,
+                         cluster.rows = FALSE,
+                         cluster.columns = TRUE,
+                         main.title,
+                         row.gaps = NULL,
+                         column.gaps = NULL,
+                         show.rownames = FALSE,
+                         show.colnames = FALSE,
+                         min.genes.to.display = 2,
+                         max.genes.to.display = 500,
+                         font.size.row = 4,
+                         keep.empty_sets = FALSE,
+                         add.set.annotation.row = TRUE) {
+  
+  # Checks
+  if (is.null(gene.sets) || !is.list(gene.sets)) {
+    stop("gene_sets must be a named list of character vectors.")
+  }
+  if (is.null(names(gene.sets)) || any(names(gene.sets) == "")) {
+    stop("gene_sets must be a *named* list (names are used for section labels).")
+  }
+  
+  counts.all <- normalized.log.counts.df
+  
+  # Keep only genes present, preserve order within each set
+  present.by.set <- lapply(gene.sets, function(gs) {
+    gs <- unique(as.character(gs))
+    gs[gs %in% rownames(counts_all)]
+  })
+  
+  if (!keep.empty.sets) {
+    present.by.set <- present.by.set[lengths(present.by.set) > 0]
+  }
+  
+  genes.present <- unlist(present.by.set, use.names = FALSE)
+  
+  # Handle duplicates across sets: keep first occurrence only
+  genes.present <- genes.present[!duplicated(genes.present)]
+  
+  if (length(genes.present) < min.genes.to.display) {
+    stop(
+      paste0(
+        "Only ", length(genes_present),
+        " genes from gene_sets were found in normalized.log.counts.df rownames. ",
+        "Check gene symbols / rownames."
+      )
+    )
+  }
+  
+  # Cap number of genes displayed (keeps ordering)
+  if (length(genes_present) > max.genes.to.display) {
+    genes.present <- genes.present[1:max.genes.to.display]
+    present.by.set <- lapply(present.by.set, function(v) v[v %in% genes.present])
+    present.by.set <- present.by.set[lengths(present.by.set) > 0]
+  }
+  
+  # Subset & order counts
+  counts <- counts.all[genes.present, , drop = FALSE]
+  
+  # Create row gaps between sets (if not provided)
+  if (is.null(row.gaps)) {
+    set.sizes <- lengths(present.by.set)
+    # pheatmap gaps.row is indices after which to draw a gap
+    row.gaps <- cumsum(set.sizes)[-length(set.sizes)]
+    if (length(row.gaps) == 0) row.gaps <- NULL
+  }
+  
+  # Add gene set annotation row (optional) 
+  if (add.set.annotation.row) {
+    set.name.vec <- rep(names(present.by.set), times = lengths(present.by.set))
+    set.anno <- data.frame(GeneSet = set.name.vec, row.names = genes.present)
+    
+    if (is.null(annotation.row)) {
+      annotation.row <- set.anno
+    } else {
+      # Ensure rownames align; subset/reorder if needed
+      annotation.row <- annotation.row[rownames(annotation.row) %in% genes.present, , drop = FALSE]
+      annotation.row <- annotation.row[match(genes.present, rownames(annotation.row)), , drop = FALSE]
+      annotation.row <- cbind(annotation.row, set.anno)
+    }
+  } else if (!is.null(annotation.row)) {
+    # Ensure annotation.row aligns with counts
+    annotation.row <- annotation.row[rownames(annotation.row) %in% genes.present, , drop = FALSE]
+    annotation.row <- annotation.row[match(genes.present, rownames(annotation.row)), , drop = FALSE]
+  }
+  
+  # ---- Arrange by annotations if no column clustering ----
+  if (cluster.columns == FALSE) {
+    
+    anno.col.names <- colnames(annotation.column)
+    
+    for (col in anno.col.names) {
+      annotation.column <- annotation.column %>%
+        dplyr::arrange(.data[[col]])
+    }
+    
+    # Match the counts columns to the annotation row order
+    counts <- counts[, rownames(annotation.column), drop = FALSE]
+  }
+  
+  # ---- Plot ----
+  heatmap.plot <- pheatmap::pheatmap(
+    counts,
+    main = main.title,
+    show_rownames = show.rownames,
+    scale = "row",
+    show_colnames = show.colnames,
+    border_color = NA,
+    cluster_rows = cluster.rows,
+    cluster_cols = cluster.columns,
+    clustering_method = "average",
+    clustering_distance_rows = "correlation",
+    clustering_distance_cols = "correlation",
+    color = colorRampPalette(c("blue", "white", "red"))(120),
+    annotation_row = annotation.row,
+    annotation_col = annotation.column,
+    annotation_colors = anno.colors,
+    gaps_row = row.gaps,
+    gaps_col = column.gaps,
+    fontsize_row = font.size.row
+  )
+  
+  return(heatmap.plot)
 }
 
 
