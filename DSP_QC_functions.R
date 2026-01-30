@@ -119,11 +119,25 @@ initialize_object <- function(dcc.files,
   
 }
 
+# Detect which computed field contains the stratum label for your ggforce version
+p_probe <- ggplot(sankey.count.data, aes(x, id = id, split = y, value = n)) +
+  geom_parallel_sets() +
+  geom_parallel_sets_axes()
+
+axis_df <- ggplot_build(p_probe)$data[[2]]
+label_field <- c("stratum", "label", "split", "y")[
+  c("stratum", "label", "split", "y") %in% names(axis_df)
+][1]
+
 plot_sankey <- function(object, 
                         lane.1, 
+                        lane.1.order, 
                         lane.2, 
+                        lane.2.order, 
                         lane.3, 
+                        lane.3.order, 
                         lane.4, 
+                        lane.4.order, 
                         fill.lane){
   
   #Rename the slide name column for formatting
@@ -161,6 +175,18 @@ plot_sankey <- function(object,
   # Establish the levels of the Sankey
   sankey.count.data <- gather_set_data(count.mat, 1:4)
   
+  # Set order of labels per lane
+  sankey.count.data <- sankey.count.data %>%
+    mutate(
+      y = case_when(
+        x == lane.1 ~ factor(y, levels = lane.1.order),
+        x == lane.2 ~ factor(y, levels = lane.2.order),
+        x == lane.3 ~ factor(y, levels = lane.3.order),
+        x == lane.4 ~ factor(y, levels = lane.4.order),
+        TRUE ~ factor(y)
+      )
+    )
+  
   # Define the annotations to use for the Sankey x axis labels
   sankey.count.data$x[sankey.count.data$x == 1] <- lane.1
   sankey.count.data$x[sankey.count.data$x == 2] <- lane.2
@@ -180,49 +206,51 @@ plot_sankey <- function(object,
   
   # plot Sankey diagram
   sankey.plot <-
-    ggplot(sankey.count.data,
-           aes(
-             x,
-             id = id,
-             split = y,
-             value = n
-           )) +
-    geom_parallel_sets(aes(fill = !!as.name(fill.lane)), 
-                       alpha = 0.5, 
+    ggplot(
+      sankey.count.data,
+      aes(
+        x,
+        id = id,
+        split = y,
+        value = n
+      )
+    ) +
+    geom_parallel_sets(aes(fill = !!as.name(fill.lane)),
+                       alpha = 0.5,
                        axis.width = 0.1) +
-    geom_parallel_sets_axes(axis.width = 0.2, 
-                            fill = "seashell", 
+    geom_parallel_sets_axes(axis.width = 0.2,
+                            fill = "seashell",
                             color = "seashell4") +
-    geom_parallel_sets_labels(color = "black",
-                              size = 3,
-                              angle = 0) + 
+    
+    # ---- NEW: custom labels with counts per stratum ----
+  # This uses the same stat ggforce uses to compute block positions.
+  geom_text(
+    stat = "parallel_sets_axes",
+    aes(label = paste0(after_stat(.data[["label"]]), "\n", after_stat(value))),
+    color = "black",
+    size = 3,
+    lineheight = 0.95
+  ) +
+    
     theme_classic(base_size = 14) +
     theme(
       legend.position = "bottom",
       axis.ticks.y = element_blank(),
       axis.line = element_blank(),
-      axis.text.y = element_blank()
-    ) + 
-    scale_y_continuous(expand = expansion(0)) +
-    scale_x_discrete(expand = expansion(0)) +
-    labs(x = "", y = "") +
-    annotate(
-      geom = "segment",
-      x = (3.25 - adjust.scale.pos),
-      xend = (3.25 - adjust.scale.pos),
-      y = 20,
-      yend = 120,
-      lwd = 2
+      axis.text.y = element_blank(),
+      
+      # ---- NEW: give labels room + allow drawing outside panel ----
+      plot.margin = margin(t = 10, r = 60, b = 10, l = 60)
     ) +
-    annotate(
-      geom = "text",
-      x = (3.19 - adjust.scale.pos),
-      y = 70,
-      angle = 90,
-      size = 5,
-      hjust = 0.5,
-      label = "100 AOIs"
-    )
+    
+    # ---- NEW: prevent label clipping at the edge ----
+  coord_cartesian(clip = "off") +
+    
+    # Give a bit of x padding so left/right labels don't get cut
+    scale_x_discrete(expand = expansion(mult = c(0.05, 0.20))) +
+    scale_y_continuous(expand = expansion(0)) +
+    labs(x = "", y = "")
+  
   
   
   # Make the annotation bar plot
