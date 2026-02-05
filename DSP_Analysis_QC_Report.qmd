@@ -95,6 +95,37 @@ init.object <- initialize_object(dcc.files = dcc.files,
                             nuclei.field.name = nuclei.field.name, 
                             segment.id.length = segment.id.length)
 
+export <- FALSE
+if(export){
+  
+  # Save the whole object
+  saveRDS(init.object, 
+          file = paste0(params$results.folder, params$dataset.name, "_preQC_object.RDS"))
+  
+  ## Save the counts ##
+  preQC.counts <- init.object@assayData$exprs
+  
+  # Map the gene name
+  RTS.gene.mapping <- as.data.frame(fData(init.object)) %>% 
+    select(RTS_ID, TargetName)
+  
+  preQC.counts$RTS_ID <- rownames(preQC.counts)
+  pre.QC.counts.mapped <- merge(preQC.counts, 
+                                RTS.gene.mapping, 
+                                by = "RTS_ID")
+  
+  saveRDS(pre.QC.counts.mapped, 
+          file = paste0(params$results.folder, params$dataset.name, "_preQC_counts.RDS"))
+  
+  ## Save the annotation ##
+  preQC.annotation <- pData(init.object)
+  
+  saveRDS(pre.QC.counts.mapped, 
+          file = paste0(params$results.folder, params$dataset.name, "_preQC_counts.RDS"))
+  
+}
+
+
 ```
 
 ## Object Summary
@@ -108,9 +139,22 @@ init.object <- initialize_object(dcc.files = dcc.files,
 
 sankey.output <- plot_sankey(object = init.object, 
                       lane.1 = "slide", 
+                      lane.1.order = c("disease3", 
+                                       "disease4", 
+                                       "normal3", 
+                                       "normal4", 
+                                       "disease1B", 
+                                       "disease2B", 
+                                       "normal2B" ),
                       lane.2 = "class", 
+                      lane.2.order = c("DKD", "normal"),
                       lane.3 = "region", 
+                      lane.3.order = c("glomerulus", 
+                                       "tubule"), 
                       lane.4 = "segment", 
+                      lane.4.order = c("GeometricSegment", 
+                                       "PanCK_pos", 
+                                       "PanCK_neg"),
                       fill.lane = "region")
 
 print(sankey.output$sankey.plot)
@@ -453,7 +497,7 @@ print(nuclei.plot)
 
 ```{r Normalization, warning=FALSE, message=FALSE}
 
-qq3.normalization.output <- geomxNorm(
+q3.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "q3")
     
