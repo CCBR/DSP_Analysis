@@ -119,16 +119,6 @@ initialize_object <- function(dcc.files,
   
 }
 
-# Detect which computed field contains the stratum label for your ggforce version
-p_probe <- ggplot(sankey.count.data, aes(x, id = id, split = y, value = n)) +
-  geom_parallel_sets() +
-  geom_parallel_sets_axes()
-
-axis_df <- ggplot_build(p_probe)$data[[2]]
-label_field <- c("stratum", "label", "split", "y")[
-  c("stratum", "label", "split", "y") %in% names(axis_df)
-][1]
-
 plot_sankey <- function(object, 
                         lane.1, 
                         lane.1.order, 
@@ -222,7 +212,7 @@ plot_sankey <- function(object,
                             fill = "seashell",
                             color = "seashell4") +
     
-    # ---- NEW: custom labels with counts per stratum ----
+  # Custom labels with counts per stratum
   # This uses the same stat ggforce uses to compute block positions.
   geom_text(
     stat = "parallel_sets_axes",
@@ -239,11 +229,11 @@ plot_sankey <- function(object,
       axis.line = element_blank(),
       axis.text.y = element_blank(),
       
-      # ---- NEW: give labels room + allow drawing outside panel ----
+  # Give labels room + allow drawing outside panel
       plot.margin = margin(t = 10, r = 60, b = 10, l = 60)
     ) +
     
-    # ---- NEW: prevent label clipping at the edge ----
+  # Prevent label clipping at the edge
   coord_cartesian(clip = "off") +
     
     # Give a bit of x padding so left/right labels don't get cut
