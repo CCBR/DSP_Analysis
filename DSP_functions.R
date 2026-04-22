@@ -806,12 +806,22 @@ make_volcano <- function(lmm.results,
 improved_make_volcano <- function(lmm.results, 
                          title, 
                          legend.title, 
-                         fc.limit = 1.5, 
+                         fc.limit = 1, 
                          custom.gene.labels = NULL, 
                          remove.controls = FALSE, 
                          remove.genes = NULL, 
                          remove.all.gene.labels = FALSE,
-                         legend.coordinates = c(.99, .01)){ 
+                         legend.coordinates = c(.99, .01), 
+                         x.lab = "Log2 Fold Change", 
+                         y.lab = "-Log10 adjusted p-value", 
+                         dotted.line.color = "gray", 
+                         alpha = 1, 
+                         nonDE.color = "gray", 
+                         upDE.color = "violetred4", 
+                         downDE.color = "steelblue4", 
+                         label.size = NULL, 
+                         label.color = "custom", 
+                         axis.tick.label.size = 8){ 
   
   # Ensure that titles are characters
   legend.title <- as.character(legend.title)
@@ -874,7 +884,7 @@ improved_make_volcano <- function(lmm.results,
   # Establish the color scheme for the volcano plot
   if(is.null(custom.gene.labels)){
     
-    contrast.level.colors <- c("steelblue4", "grey", "violetred4")
+    contrast.level.colors <- c(downDE.color, nonDE.color, upDE.color)
     names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
     
     
@@ -885,23 +895,28 @@ improved_make_volcano <- function(lmm.results,
                                                     y = -log10(padj), 
                                                     col = de_direction, 
                                                     label = deglabel)) +
-        geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
-        geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
-        labs(x = "log2 Fold Change",
-             y = "-log10 adjusted p-value", 
+        geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
+        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        labs(x = x.lab,
+             y = y.lab, 
              title = title) + 
-        geom_point(size = 2) +
+        geom_point(size = 2, alpha = alpha) +
         scale_color_manual(legend.title, 
                            values = contrast.level.colors, 
                            breaks = "UP", "NONE", "DOWN") + 
-        geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+        geom_text_repel(max.overlaps = Inf, 
+                        show.legend = FALSE, 
+                        size = label.size, 
+                        color = "black") + 
         xlim(-log2.scale-0.2, log2.scale+0.2) + 
         theme_classic() + 
-        theme(plot.title = element_text(hjust = 0.5, 
+        theme(panel.grid.major = element_line(color = "grey90", linewidth = 0.5),
+              plot.title = element_text(hjust = 0.5, 
                                         face = "bold", 
                                         size = 16), 
               axis.title = element_text(face = "bold", 
                                         size = 14), 
+              axis.text = element_text(size = axis.tick.label.size), 
               legend.position="inside", 
               legend.position.inside = legend.coordinates, 
               legend.justification = c(1, 0), 
@@ -921,22 +936,27 @@ improved_make_volcano <- function(lmm.results,
                                                     y = -log10(padj), 
                                                     col = de_direction, 
                                                     label = deglabel)) +
-        geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
-        geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
-        labs(x = "log2 Fold Change",
-             y = "-log10 adjusted p-value", 
+        geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
+        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        labs(x = x.lab,
+             y = y.lab, 
              title = title) + 
-        geom_point(size = 2) +
+        geom_point(size = 2, alpha = alpha) +
         scale_color_manual(legend.title, 
                            values = contrast.level.colors, 
                            breaks = c("UP", "NONE", "DOWN")) + 
-        geom_text_repel(max.overlaps = Inf, show.legend = FALSE) + 
+        geom_text_repel(max.overlaps = Inf, 
+                        show.legend = FALSE, 
+                        size = label.size, 
+                        color = "black") + 
         theme_classic() + 
-        theme(plot.title = element_text(hjust = 0.5, 
+        theme(panel.grid.major = element_line(color = "grey90", linewidth = 0.5),
+              plot.title = element_text(hjust = 0.5, 
                                         face = "bold", 
                                         size = 16), 
               axis.title = element_text(face = "bold", 
                                         size = 14), 
+              axis.text = element_text(size = axis.tick.label.size), 
               legend.position="inside", 
               legend.position.inside = legend.coordinates, 
               legend.justification = c(1, 0), 
@@ -1008,6 +1028,7 @@ improved_make_volcano <- function(lmm.results,
                                       size = 16), 
             axis.title = element_text(face = "bold", 
                                       size = 14), 
+            axis.text = element_text(size = axis.tick.label.size), 
             legend.position="inside", 
             legend.position.inside = legend.coordinates, 
             legend.justification = c(1, 0), 
