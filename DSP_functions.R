@@ -805,6 +805,7 @@ make_volcano <- function(lmm.results,
 
 improved_make_volcano <- function(lmm.results, 
                          title, 
+                         title.size = 16,
                          legend.title, 
                          fc.limit = 1, 
                          custom.gene.labels = NULL, 
@@ -821,7 +822,9 @@ improved_make_volcano <- function(lmm.results,
                          downDE.color = "steelblue4", 
                          label.size = NULL, 
                          label.color = "custom", 
-                         axis.tick.label.size = 8){ 
+                         axis.tick.label.size = 8, 
+                         legend.text.size = 8, 
+                         axis.title.size = 8){ 
   
   # Ensure that titles are characters
   legend.title <- as.character(legend.title)
@@ -913,9 +916,9 @@ improved_make_volcano <- function(lmm.results,
         theme(panel.grid.major = element_line(color = "grey90", linewidth = 0.5),
               plot.title = element_text(hjust = 0.5, 
                                         face = "bold", 
-                                        size = 16), 
+                                        size = title.size), 
               axis.title = element_text(face = "bold", 
-                                        size = 14), 
+                                        size = axis.title.size), 
               axis.text = element_text(size = axis.tick.label.size), 
               legend.position="inside", 
               legend.position.inside = legend.coordinates, 
@@ -924,8 +927,10 @@ improved_make_volcano <- function(lmm.results,
                 colour = "black", 
                 linewidth = 0.5,  
                 fill = "white"), 
-              legend.text = element_text(face = "bold"), 
-              legend.title = element_text(face = "bold")) + 
+              legend.text = element_text(face = "bold", 
+                                         size = legend.text.size), 
+              legend.title = element_text(face = "bold", 
+                                          size = legend.text.size)) + 
         scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
                            limits = c(-log2.scale, log2.scale))
       
@@ -953,9 +958,9 @@ improved_make_volcano <- function(lmm.results,
         theme(panel.grid.major = element_line(color = "grey90", linewidth = 0.5),
               plot.title = element_text(hjust = 0.5, 
                                         face = "bold", 
-                                        size = 16), 
+                                        size = title.size), 
               axis.title = element_text(face = "bold", 
-                                        size = 14), 
+                                        size = axis.title.size), 
               axis.text = element_text(size = axis.tick.label.size), 
               legend.position="inside", 
               legend.position.inside = legend.coordinates, 
@@ -964,8 +969,10 @@ improved_make_volcano <- function(lmm.results,
                 colour = "black", 
                 linewidth = 0.5,  
                 fill = "white"), 
-              legend.text = element_text(face = "bold"), 
-              legend.title = element_text(face = "bold")) + 
+              legend.text = element_text(face = "bold", 
+                                         size = legend.text.size), 
+              legend.title = element_text(face = "bold", 
+                                          size = legend.text.size)) + 
         scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
                            limits = c(-log2.scale, log2.scale))
       
@@ -1025,9 +1032,9 @@ improved_make_volcano <- function(lmm.results,
       theme_classic() + 
       theme(plot.title = element_text(hjust = 0.5, 
                                       face = "bold", 
-                                      size = 16), 
+                                      size = title.size), 
             axis.title = element_text(face = "bold", 
-                                      size = 14), 
+                                      size = axis.title.size), 
             axis.text = element_text(size = axis.tick.label.size), 
             legend.position="inside", 
             legend.position.inside = legend.coordinates, 
@@ -1036,8 +1043,10 @@ improved_make_volcano <- function(lmm.results,
               colour = "black", 
               linewidth = 0.5,  
               fill = "white"), 
-            legend.text = element_text(face = "bold"), 
-            legend.title = element_text(face = "bold")) + 
+            legend.text = element_text(face = "bold", 
+                                       size = legend.text.size), 
+            legend.title = element_text(face = "bold", 
+                                        size = legend.text.size)) + 
       scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
                          limits = c(-log2.scale, log2.scale))
     
