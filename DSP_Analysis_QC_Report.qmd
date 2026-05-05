@@ -500,6 +500,9 @@ print(nuclei.plot)
 q3.normalization.output <- geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "q3")
+
+# Add a fixed value for user in DE comparisons
+pData(q3.normalization.output$object)$fixed_value_column <- "value"
     
     
 neg.normalization.output <- geomxNorm(
@@ -549,16 +552,16 @@ if(export.norm.object == TRUE){
   annotation <- annotation %>% select(-loq)
   
   # Save the whole object for Q3 normalized counts
-  save(object, file = paste0(params$results.folder, 
-                             params$dataset.name, "_q3normalized_object_skin.RDA"))
+  saveRDS(object, file = paste0(params$results.folder, 
+                             params$dataset.name, "_q3normalized_object.RDS"))
   
   write.csv(q3.counts, file = paste0(params$results.folder, 
-                                  params$dataset.name, "_q3normalized_counts_skin.csv"), 
+                                  params$dataset.name, "_q3normalized_counts.csv"), 
             row.names = FALSE)
   
   # Save the quantile normalized.counts
   write.csv(quant.counts, file = paste0(params$results.folder, 
-                                  params$dataset.name, "_quantnormalized_counts_skin.csv"), 
+                                  params$dataset.name, "_quantnormalized_counts.csv"), 
             row.names = FALSE)
   
 }   

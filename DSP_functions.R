@@ -46,47 +46,64 @@ subset_counts_for_lmm <- function(counts,
 }
 
 subset_object_for_lmm <- function(object, 
-                                  subset.list){ 
+                                  subset.group.1,
+                                  subset.group.2){ 
   
   # Set up the object to subset
   subset.object <- object
   
-  # Subset the object based on the given annotations
-  for(column in names(subset.list)){ 
+  # Get the annotation
+  annotation <- pData(object)
+  
+  
+  # Get the AOIs for the first group
+  subset.1.annotation <- annotation
+  
+  for(field in names(subset.group.1)){
     
-    subset.indices <- pData(subset.object)[[column]] %in% subset.list[[column]]
-    subset.object <- subset.object[, subset.indices]
-    
-    # Factor the columns with relevant annotations
-    pData(subset.object)[[column]] <- factor(pData(subset.object)[[column]])
+    values <- subset.group.1[[field]]
+
+    subset.1.annotation <- subset.1.annotation %>%
+      filter(.data[[field]] %in% values)
     
   }
   
-  # Factor the slide column
-  pData(subset.object)[["slide_name"]] <- 
-    factor(pData(subset.object)[["slide_name"]])
+  # Final AOI list for the first group
+  subset.1.AOIs <- rownames(subset.1.annotation)
   
-  # Create log2 counts
+  # Gather the AOIs for the second group
+  subset.2.annotation <- annotation
+  
+  for(field in names(subset.group.2)){
+    
+    values <- subset.group.2[field]
+
+    subset.2.annotation <- subset.2.annotation %>%
+      filter(.data[[field]] %in% values)
+    
+  }
+  
+  # Final AOI list for the second group
+  subset.2.AOIs <- rownames(subset.2.annotation)
+  
+  # Combine into a total AOI list
+  subset.AOIs <- c(subset.1.AOIs, subset.2.AOIs)
+  
+  # Create the subset returns
+  subset.object <- object[,subset.AOIs]
+  
+  subset.annotation <- pData(subset.object)
+  subset.annotation$sampleID <- gsub(".dcc", "", rownames(subset.annotation))
+  
+  # Create log2 counts for normalized and raw
   assayDataElement(object = subset.object, elt = "log_q") <-
     assayDataApply(subset.object, 2, FUN = log, base = 2, elt = "q_norm")
   
   assayDataElement(object = subset.object, elt = "log_raw") <-
     assayDataApply(subset.object, 2, FUN = log, base = 2, elt = "exprs")
   
-  
-  # Gather the log counts and annotation to return
-  log.counts <- subset.object@assayData$log_q
-  raw.log.counts <- subset.object@assayData$log_raw
-  annotation.df <- pData(subset.object)
-  
-  # Replace all bad characters in column names
-  annotation.df <- annotation.df %>%
-    rename_all(~str_replace_all(., " ", "_"))
-  
   return(list("subset.object" = subset.object, 
-              "log.counts" = log.counts, 
-              "raw.log.counts" = raw.log.counts, 
-              "annotation" = annotation.df))
+              "subset.annotation" = subset.annotation))
   
 }
 
@@ -467,6 +484,135 @@ make_heatmap <- function(normalized.log.counts.df = q3.norm.log.counts,
   
 }
 
+make_heatmap_gene_sets <- function(normalized.log.counts.df,
+                         gene.sets,
+                         annotation.column,
+                         annotation.row = NULL,
+                         anno.colors,
+                         cluster.rows = FALSE,
+                         cluster.columns = TRUE,
+                         main.title,
+                         row.gaps = NULL,
+                         column.gaps = NULL,
+                         show.rownames = FALSE,
+                         show.colnames = FALSE,
+                         min.genes.to.display = 2,
+                         max.genes.to.display = 500,
+                         font.size.row = 4,
+                         keep.empty_sets = FALSE,
+                         add.set.annotation.row = TRUE) {
+  
+  # Checks
+  if (is.null(gene.sets) || !is.list(gene.sets)) {
+    stop("gene_sets must be a named list of character vectors.")
+  }
+  if (is.null(names(gene.sets)) || any(names(gene.sets) == "")) {
+    stop("gene_sets must be a *named* list (names are used for section labels).")
+  }
+  
+  counts.all <- normalized.log.counts.df
+  
+  # Keep only genes present, preserve order within each set
+  present.by.set <- lapply(gene.sets, function(gs) {
+    gs <- unique(as.character(gs))
+    gs[gs %in% rownames(counts_all)]
+  })
+  
+  if (!keep.empty.sets) {
+    present.by.set <- present.by.set[lengths(present.by.set) > 0]
+  }
+  
+  genes.present <- unlist(present.by.set, use.names = FALSE)
+  
+  # Handle duplicates across sets: keep first occurrence only
+  genes.present <- genes.present[!duplicated(genes.present)]
+  
+  if (length(genes.present) < min.genes.to.display) {
+    stop(
+      paste0(
+        "Only ", length(genes_present),
+        " genes from gene_sets were found in normalized.log.counts.df rownames. ",
+        "Check gene symbols / rownames."
+      )
+    )
+  }
+  
+  # Cap number of genes displayed (keeps ordering)
+  if (length(genes_present) > max.genes.to.display) {
+    genes.present <- genes.present[1:max.genes.to.display]
+    present.by.set <- lapply(present.by.set, function(v) v[v %in% genes.present])
+    present.by.set <- present.by.set[lengths(present.by.set) > 0]
+  }
+  
+  # Subset & order counts
+  counts <- counts.all[genes.present, , drop = FALSE]
+  
+  # Create row gaps between sets (if not provided)
+  if (is.null(row.gaps)) {
+    set.sizes <- lengths(present.by.set)
+    # pheatmap gaps.row is indices after which to draw a gap
+    row.gaps <- cumsum(set.sizes)[-length(set.sizes)]
+    if (length(row.gaps) == 0) row.gaps <- NULL
+  }
+  
+  # Add gene set annotation row (optional) 
+  if (add.set.annotation.row) {
+    set.name.vec <- rep(names(present.by.set), times = lengths(present.by.set))
+    set.anno <- data.frame(GeneSet = set.name.vec, row.names = genes.present)
+    
+    if (is.null(annotation.row)) {
+      annotation.row <- set.anno
+    } else {
+      # Ensure rownames align; subset/reorder if needed
+      annotation.row <- annotation.row[rownames(annotation.row) %in% genes.present, , drop = FALSE]
+      annotation.row <- annotation.row[match(genes.present, rownames(annotation.row)), , drop = FALSE]
+      annotation.row <- cbind(annotation.row, set.anno)
+    }
+  } else if (!is.null(annotation.row)) {
+    # Ensure annotation.row aligns with counts
+    annotation.row <- annotation.row[rownames(annotation.row) %in% genes.present, , drop = FALSE]
+    annotation.row <- annotation.row[match(genes.present, rownames(annotation.row)), , drop = FALSE]
+  }
+  
+  # ---- Arrange by annotations if no column clustering ----
+  if (cluster.columns == FALSE) {
+    
+    anno.col.names <- colnames(annotation.column)
+    
+    for (col in anno.col.names) {
+      annotation.column <- annotation.column %>%
+        dplyr::arrange(.data[[col]])
+    }
+    
+    # Match the counts columns to the annotation row order
+    counts <- counts[, rownames(annotation.column), drop = FALSE]
+  }
+  
+  # ---- Plot ----
+  heatmap.plot <- pheatmap::pheatmap(
+    counts,
+    main = main.title,
+    show_rownames = show.rownames,
+    scale = "row",
+    show_colnames = show.colnames,
+    border_color = NA,
+    cluster_rows = cluster.rows,
+    cluster_cols = cluster.columns,
+    clustering_method = "average",
+    clustering_distance_rows = "correlation",
+    clustering_distance_cols = "correlation",
+    color = colorRampPalette(c("blue", "white", "red"))(120),
+    annotation_row = annotation.row,
+    annotation_col = annotation.column,
+    annotation_colors = anno.colors,
+    gaps_row = row.gaps,
+    gaps_col = column.gaps,
+    fontsize_row = font.size.row
+  )
+  
+  return(heatmap.plot)
+}
+
 
 calculate_signal2noise <- function(){
   
@@ -654,6 +800,266 @@ make_volcano <- function(lmm.results,
   return(list("volcano.plot" = volcano.plot))
   
 }
+
+
+
+improved_make_volcano <- function(lmm.results, 
+                         title, 
+                         title.size = 16,
+                         legend.title, 
+                         fc.limit = 1, 
+                         custom.gene.labels = NULL, 
+                         remove.controls = FALSE, 
+                         remove.genes = NULL, 
+                         remove.all.gene.labels = FALSE,
+                         legend.coordinates = c(.99, .01), 
+                         x.lab = "Log2 Fold Change", 
+                         y.lab = "-Log10 adjusted p-value", 
+                         dotted.line.color = "gray", 
+                         alpha = 1, 
+                         nonDE.color = "gray", 
+                         upDE.color = "violetred4", 
+                         downDE.color = "steelblue4", 
+                         label.size = NULL, 
+                         label.color = "custom", 
+                         axis.tick.label.size = 8, 
+                         legend.text.size = 8, 
+                         axis.title.size = 8){ 
+  
+  # Ensure that titles are characters
+  legend.title <- as.character(legend.title)
+  
+  # Remove controls if applicable
+  #if(remove.controls == TRUE){
+#    
+#    NEG.indices <- grep("NEG_", rownames(de.results))
+#    POS.indices <- grep("POS_", rownames(de.results))
+#    control.indices <- c(NEG.indices, POS.indices)
+#    
+#    # Remove the control probes
+#    de.results <- de.results[-control.indices,]
+#    
+#  } 
+  
+  # Remove custom gene input
+  if(!is.null(remove.genes)){
+    
+    lmm.results <- lmm.results[!rownames(lmm.results) %in% remove.genes, ]
+    
+  }
+  
+  
+  
+  # Create a column for direction of DEGs
+  lmm.results$de_direction <- "NONE"
+  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+                             lmm.results$logfc > fc.limit] <- "UP"
+  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+                             lmm.results$logfc < -fc.limit] <- "DOWN"
+  
+  # Create a label for DEGs
+  if(is.null(custom.gene.labels)){
+    
+    lmm.results$deglabel <- ifelse(lmm.results$de_direction == "NONE", 
+                                  NA, 
+                                  lmm.results$gene)
+    
+  } else {
+    
+    lmm.results$deglabel <- ifelse(lmm.results$gene %in% custom.gene.labels, 
+                                  lmm.results$gene, 
+                                  NA)
+    
+  }
+  
+  # Remove all gene labels, in the case of too many DEGs
+  if(remove.all.gene.labels){
+    
+    lmm.results$deglabel <- NA
+    
+  }
+  
+  
+  
+  # Compute the scale for the volcano x-axis
+  log2.scale <- ceiling(max(abs(lmm.results$logfc)))
+  
+  # Establish the color scheme for the volcano plot
+  if(is.null(custom.gene.labels)){
+    
+    contrast.level.colors <- c(downDE.color, nonDE.color, upDE.color)
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP")
+    
+    
+    
+    if(is.null(legend.coordinates)){ 
+      
+      volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+                                                    y = -log10(padj), 
+                                                    col = de_direction, 
+                                                    label = deglabel)) +
+        geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
+        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        labs(x = x.lab,
+             y = y.lab, 
+             title = title) + 
+        geom_point(size = 2, alpha = alpha) +
+        scale_color_manual(legend.title, 
+                           values = contrast.level.colors, 
+                           breaks = "UP", "NONE", "DOWN") + 
+        geom_text_repel(max.overlaps = Inf, 
+                        show.legend = FALSE, 
+                        size = label.size, 
+                        color = "black") + 
+        xlim(-log2.scale-0.2, log2.scale+0.2) + 
+        theme_classic() + 
+        theme(panel.grid.major = element_line(color = "grey90", linewidth = 0.5),
+              plot.title = element_text(hjust = 0.5, 
+                                        face = "bold", 
+                                        size = title.size), 
+              axis.title = element_text(face = "bold", 
+                                        size = axis.title.size), 
+              axis.text = element_text(size = axis.tick.label.size), 
+              legend.position="inside", 
+              legend.position.inside = legend.coordinates, 
+              legend.justification = c(1, 0), 
+              legend.box.background = element_rect(
+                colour = "black", 
+                linewidth = 0.5,  
+                fill = "white"), 
+              legend.text = element_text(face = "bold", 
+                                         size = legend.text.size), 
+              legend.title = element_text(face = "bold", 
+                                          size = legend.text.size)) + 
+        scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
+                           limits = c(-log2.scale, log2.scale))
+      
+    } else {
+      
+      
+      volcano.plot <- ggplot(data = lmm.results, aes(x = logfc, 
+                                                    y = -log10(padj), 
+                                                    col = de_direction, 
+                                                    label = deglabel)) +
+        geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
+        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        labs(x = x.lab,
+             y = y.lab, 
+             title = title) + 
+        geom_point(size = 2, alpha = alpha) +
+        scale_color_manual(legend.title, 
+                           values = contrast.level.colors, 
+                           breaks = c("UP", "NONE", "DOWN")) + 
+        geom_text_repel(max.overlaps = Inf, 
+                        show.legend = FALSE, 
+                        size = label.size, 
+                        color = "black") + 
+        theme_classic() + 
+        theme(panel.grid.major = element_line(color = "grey90", linewidth = 0.5),
+              plot.title = element_text(hjust = 0.5, 
+                                        face = "bold", 
+                                        size = title.size), 
+              axis.title = element_text(face = "bold", 
+                                        size = axis.title.size), 
+              axis.text = element_text(size = axis.tick.label.size), 
+              legend.position="inside", 
+              legend.position.inside = legend.coordinates, 
+              legend.justification = c(1, 0), 
+              legend.box.background = element_rect(
+                colour = "black", 
+                linewidth = 0.5,  
+                fill = "white"), 
+              legend.text = element_text(face = "bold", 
+                                         size = legend.text.size), 
+              legend.title = element_text(face = "bold", 
+                                          size = legend.text.size)) + 
+        scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
+                           limits = c(-log2.scale, log2.scale))
+      
+      
+    }
+    
+    
+    
+    
+    
+  } else {
+    
+    # Label the custom genes depending on significance
+    lmm.results <- lmm.results %>% 
+      mutate(custom.label = ifelse(!is.na(deglabel) & de_direction == "NONE", 
+                                   "BLACK", 
+                                   ifelse(!is.na(deglabel) & de_direction != "NONE", 
+                                          de_direction, 
+                                          "NONE")))
+    
+    contrast.level.colors <- c("steelblue4", "grey", "violetred4", "black")
+    names(contrast.level.colors) <- c("DOWN", "NONE", "UP", "BLACK")
+    
+    lmm.results.labeled <- lmm.results %>%
+      filter(custom.label != "NONE")
+    
+    lmm.results.unlabeled <- lmm.results %>% 
+      filter(custom.label == "NONE")
+    
+    
+    volcano.plot <- ggplot() + 
+      geom_point(data = lmm.results.unlabeled, aes(x = logfc, 
+                                                  y = -log10(padj), 
+                                                  col = custom.label, 
+                                                  alpha = 0.5)) + 
+      geom_point(data = lmm.results.labeled, aes(x = logfc, 
+                                                y = -log10(padj), 
+                                                col = custom.label, 
+                                                alpha = 1)) +
+      geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
+      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      labs(x = "log2 Fold Change",
+           y = "-log10 adjusted p-value", 
+           title = title) + 
+      geom_point(size = 2) +
+      scale_color_manual(legend.title, 
+                         values = contrast.level.colors, 
+                         breaks = c("DOWN", "UP")) + 
+      geom_text_repel(data = lmm.results.labeled,
+                      aes(x = logfc, 
+                          y = -log10(padj), 
+                          label = deglabel, 
+                          col = custom.label), 
+                      max.overlaps = Inf, 
+                      show.legend = FALSE) + 
+      scale_alpha_identity(guide = "none") + 
+      theme_classic() + 
+      theme(plot.title = element_text(hjust = 0.5, 
+                                      face = "bold", 
+                                      size = title.size), 
+            axis.title = element_text(face = "bold", 
+                                      size = axis.title.size), 
+            axis.text = element_text(size = axis.tick.label.size), 
+            legend.position="inside", 
+            legend.position.inside = legend.coordinates, 
+            legend.justification = c(1, 0), 
+            legend.box.background = element_rect(
+              colour = "black", 
+              linewidth = 0.5,  
+              fill = "white"), 
+            legend.text = element_text(face = "bold", 
+                                       size = legend.text.size), 
+            legend.title = element_text(face = "bold", 
+                                        size = legend.text.size)) + 
+      scale_x_continuous(breaks = scales::breaks_pretty(n = 7),
+                         limits = c(-log2.scale, log2.scale))
+    
+  }
+  
+  
+  
+  # Make the volcano plot
+  
+  
+  return(list("volcano.plot" = volcano.plot))
+  
+} 
 
 make_dual_volcano <- function(lmm.results.1, 
                               lmm.results.2,

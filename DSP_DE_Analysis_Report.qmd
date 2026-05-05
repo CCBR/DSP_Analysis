@@ -1,18 +1,19 @@
 ---
-title: "DSP DE Analysis Template"
+title: "DSP DE Analysis - Kidney Test Dataset"
 format:
   html:
     code-fold: true
 editor: visual
 
 params:
-  data.folder: "$path_to_folder"
+  data.folder: "test_datasets/Human_Kidney/"
   QC.folder: "$path_to_folder"
-  results.folder: "$path_to_folder"
+  results.folder: "de/"
   run.folder: "$path_to_folder"
+  dataset.name: "human_kidney_test_"
 ---
 
-# DE Analysis - Vessel
+# DE Analysis
 
 ```{r Setup}
 #| warning: false
@@ -34,12 +35,7 @@ library(DSPWorkflow)
 # Source the helper functions
 source("DSP_functions.R")
 
-results.folder <- "$path_to_folder"
-data.folder <- "$path_to_folder"
-QC.folder <- "$path_to_folder"
-run.folder <- "$path_to_folder"
-
-DE.results.folder <- paste0(results.folder, run.folder)
+DE.results.folder <- paste0(params$results.folder, params$run.folder)
 DE.results.files <- list.files(DE.results.folder)
 ```
 
@@ -47,8 +43,10 @@ DE.results.files <- list.files(DE.results.folder)
 
 ```{r Load Normalized Counts}
 
-normalized.object.list <- get(load(file = paste0(params$QC.folder,
-                                       "$normalized.object.RDA")))
+normalized.object <- readRDS(file = paste0(params$data.folder,
+                                                 params$dataset.name, 
+                                                 "q3normalized_object.RDS"))
+
 
 ```
 
@@ -58,50 +56,42 @@ normalized.object.list <- get(load(file = paste0(params$QC.folder,
 
 # Set up annotation colors for the heatmaps
 anno.colors = list(
-      Treatment_group = c(C = "slateblue", 
-                T1 = "coral", 
-                T2 = "seagreen1", 
-                T3 = "cadetblue1", 
-                T4 = "pink")
+      segment = c(GeometricSegment = "slateblue", 
+                PanCK_pos = "coral", 
+                PanCK_neg = "seagreen1"), 
+      region = c(glomerulus = "red", 
+                 tubule = "blue"), 
+      class = c(DKD = "purple", 
+                normal = "yellow"), 
+      pathology = c(normal = "orange", 
+                    abnormal = "green", 
+                    "NA" = "gray")
       )
 ```
 
 ### Run DE
 
-#### T1 vs. C
+#### DKD vs. normal
 
-```{r DE contrast: T1 vs. C}
+```{r}
 #| warning: false
 #| message: false
 
-# Setup annotation groups for the contrast
-# Order is Condition, Reference
-contrast.groups <- c("T1", "C")
+# Name for the contrast 
+contrast.name <- "DKD_vs_normal"
 
-contrast.field <- "Treatment_group"
+subset.group.1 <- list(class = c("DKD"))
 
-# Define the name of the contrast
-contrast.name <- paste0(contrast.groups[[2]], 
-                        "_", 
-                        contrast.groups[[1]])
+subset.group.2 <- list(class = c("normal"))
 
-# Gather the column names to be used in defining contrasts
-contrast.groups.list <- list()
+lmm.input <- subset_object_for_lmm(object = normalized.object, 
+                      subset.group.1 = subset.group.1, 
+                      subset.group.2 = subset.group.2)
 
-contrast.groups.list[[contrast.field]] = contrast.groups
- 
-
-
-# Filter data for the chosen annotations
-object <- normalized.object.list$object
-
-# Generate the counts, annotation, and subset object for lmm
-lmm.input <- subset_object_for_lmm(object = object, 
-                            subset.list = contrast.groups.list)
 
 # Create summary table of group counts
 summary.table.df <- pData(lmm.input$subset.object) %>%  
-  select(c(names(contrast.groups.list)))
+  select(c(names(subset.group.1)))
 
 summary.table <- table(summary.table.df)
 
@@ -114,7 +104,7 @@ DE.result.file <- grepl(contrast.name, DE.results.files)
 if(sum(DE.result.file) == 1) {
   
   # Load the previously generated DE results
-  results.df <- as.data.frame(read.csv(paste0(results.folder, run.folder, contrast.name, "_de.results.csv")))
+  results.df <- as.data.frame(read.csv(paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv")))
                               
 } else {
   # Use the function from the DSPWorkflow package
@@ -122,11 +112,11 @@ if(sum(DE.result.file) == 1) {
   # Within slide analysis
   # Listed contrasts are condition, reference 
   results.list <- diffExpr(object = lmm.input$subset.object, 
-                        analysis.type = "Within Groups", 
-                        region.col = "Treatment_group", 
-                        regions = c("T1", "C"), 
-                        group.col = "region", 
-                        groups = c("region_B"), 
+                        analysis.type = "Between Groups", 
+                        region.col = "fixed_value_column", 
+                        regions = c("value"), 
+                        group.col = "class", 
+                        groups = c("DKD", "normal"), 
                         n.cores = parallel::detectCores())
   
   # Create the results df
@@ -134,7 +124,12 @@ if(sum(DE.result.file) == 1) {
   
   write.results <- FALSE
   if(write.results == TRUE){
-    write.csv(results.df, paste0(results.folder, run.folder, contrast.name, "_de.results.csv"))
+    write.csv(results.df, paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv"))
+    
+    saveRDS(results.df, paste0(params$data.folder, 
+                              params$results.folder, 
+                              contrast.name, "_de_results.RDS"))
+    
   }
   
   
@@ -170,11 +165,11 @@ if(export.deg.list == TRUE){
 # Make the volcano plot
 volcano.output <- make_volcano(lmm.results = results.df, 
                                title = contrast.name, 
-                               legend.title = "Expression in T1", 
-                               x.axis.title = "logFC: C (cond) versus T1 (ref)", 
-                               fc.limit = 1, 
-                               pos.label.limit = 1, 
-                               neg.label.limit = -1)
+                               legend.title = "Expression in DKD", 
+                               x.axis.title = "logFC", 
+                               fc.limit = 1.5, 
+                               pos.label.limit = 1.5, 
+                               neg.label.limit = -1.5)
 
 # Export the volcano
 export.volcano <- FALSE
@@ -187,87 +182,76 @@ if(export.volcano == TRUE){
 print(volcano.output$volcano.plot)
 
 # Subset the annotation just for the heatmap annotations of interest
-annotation.heatmap <- lmm.input$annotation %>% 
-  select(names(anno.colors)) %>% 
-  arrange(Treatment_group)
+#annotation.heatmap <- lmm.input$annotation %>% 
+#  select(names(anno.colors)) %>% 
+#  arrange(Treatment_group)
+#
+#heatmap.plot <- make_heatmap(
+#  normalized.log.counts.df = lmm.input$log.counts, 
+#  de.results = results.df, 
+#  top.degs = TRUE, 
+#  annotation.column = annotation.heatmap,
+#  annotation.row = NULL, 
+#  anno.colors = anno.colors, 
+#  cluster.rows = TRUE, 
+#  cluster.columns = TRUE, 
+#  main.title = contrast.name, 
+#  row.gaps = NULL, 
+#  column.gaps = NULL, 
+#  show.colnames = FALSE, 
+#  show.rownames = TRUE)
+#
+#print(heatmap.plot)
 
-heatmap.plot <- make_heatmap(
-  normalized.log.counts.df = lmm.input$log.counts, 
-  de.results = results.df, 
-  top.degs = TRUE, 
-  annotation.column = annotation.heatmap,
-  annotation.row = NULL, 
-  anno.colors = anno.colors, 
-  cluster.rows = TRUE, 
-  cluster.columns = TRUE, 
-  main.title = contrast.name, 
-  row.gaps = NULL, 
-  column.gaps = NULL, 
-  show.colnames = FALSE, 
-  show.rownames = TRUE)
-
-print(heatmap.plot)
-
-export.heatmap <- FALSE
-if(export.heatmap == TRUE){
-  
-  ggsave(heatmap.plot, 
-         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot.png"), 
-         width = 14, 
-         height = 10)
-  
-}
-
-# GSEA Preranked List
-
-gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
-                                         contrast.levels = contrast.groups, 
-                                         annotation = lmm.input$annotation,
-                                         log.counts = lmm.input$log.counts)
-
-export.gsea.input <- FALSE
-if(export.gsea.input == TRUE){
-  
-  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, "_gsea_preranked_input.csv"), row.names = FALSE)
-  
-}
+#export.heatmap <- FALSE
+#if(export.heatmap == TRUE){
+#  
+#  ggsave(heatmap.plot, 
+#         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot#.png"), 
+#         width = 14, 
+#         height = 10)
+#  
+#}
+#
+## GSEA Preranked List
+#
+#gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
+#                                         contrast.levels = contrast.groups, 
+#                                         annotation = lmm.input$annotation,
+#                                         log.counts = lmm.input$log.counts)
+#
+#export.gsea.input <- FALSE
+#if(export.gsea.input == TRUE){
+#  
+#  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, #"_gsea_preranked_input.csv"), row.names = FALSE)
+#  
+#}
 
 ```
 
-#### T4 vs. C
+#### DKD - Glomerulus vs. Tubule
 
-```{r DE contrast: T4 vs. C}
+```{r}
 #| warning: false
 #| message: false
 
-# Setup annotation groups for the contrast
-# Order is Condition, Reference
-contrast.groups <- c("T4", "C")
+# Name for the contrast 
+contrast.name <- "DKD_glomerulus_vs_tubule"
 
-contrast.field <- "Treatment_group"
+subset.group.1 <- list(class = c("DKD"), 
+                       region = c("glomerulus"))
 
-# Define the name of the contrast
-contrast.name <- paste0(contrast.groups[[2]], 
-                        "_", 
-                        contrast.groups[[1]])
+subset.group.2 <- list(class = c("DKD"), 
+                       region = c("tubule"))
 
-# Gather the column names to be used in defining contrasts
-contrast.groups.list <- list()
+lmm.input <- subset_object_for_lmm(object = normalized.object, 
+                      subset.group.1 = subset.group.1, 
+                      subset.group.2 = subset.group.2)
 
-contrast.groups.list[[contrast.field]] = contrast.groups
- 
-
-
-# Filter data for the chosen annotations
-object <- normalized.object.list$object
-
-# Generate the counts, annotation, and subset object for lmm
-lmm.input <- subset_object_for_lmm(object = object, 
-                            subset.list = contrast.groups.list)
 
 # Create summary table of group counts
 summary.table.df <- pData(lmm.input$subset.object) %>%  
-  select(c(names(contrast.groups.list)))
+  select(c(names(subset.group.1)))
 
 summary.table <- table(summary.table.df)
 
@@ -280,7 +264,7 @@ DE.result.file <- grepl(contrast.name, DE.results.files)
 if(sum(DE.result.file) == 1) {
   
   # Load the previously generated DE results
-  results.df <- as.data.frame(read.csv(paste0(results.folder, run.folder, contrast.name, "_de.results.csv")))
+  results.df <- as.data.frame(read.csv(paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv")))
                               
 } else {
   # Use the function from the DSPWorkflow package
@@ -289,18 +273,23 @@ if(sum(DE.result.file) == 1) {
   # Listed contrasts are condition, reference 
   results.list <- diffExpr(object = lmm.input$subset.object, 
                         analysis.type = "Within Groups", 
-                        region.col = "Treatment_group", 
-                        regions = c("T4", "C"), 
-                        group.col = "region", 
-                        groups = c("region_B"), 
+                        region.col = "region", 
+                        regions = c("glomerulus", "tubule"), 
+                        group.col = "class", 
+                        groups = c("DKD"), 
                         n.cores = parallel::detectCores())
   
   # Create the results df
   results.df <- results.list$results
   
-  write.results <- TRUE
+  write.results <- FALSE
   if(write.results == TRUE){
-    write.csv(results.df, paste0(results.folder, run.folder, contrast.name, "_de.results.csv"))
+    write.csv(results.df, paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv"))
+    
+    saveRDS(results.df, paste0(params$data.folder, 
+                              params$results.folder, 
+                              contrast.name, "_de_results.RDS"))
+    
   }
   
   
@@ -336,11 +325,11 @@ if(export.deg.list == TRUE){
 # Make the volcano plot
 volcano.output <- make_volcano(lmm.results = results.df, 
                                title = contrast.name, 
-                               legend.title = "Expression in T4", 
-                               x.axis.title = "logFC: C (Ref) versus T4 (Cond)", 
+                               legend.title = "Expression in glomerulus", 
+                               x.axis.title = "logFC", 
                                fc.limit = 1, 
-                               pos.label.limit = 1, 
-                               neg.label.limit = -1)
+                               pos.label.limit = 1.5, 
+                               neg.label.limit = -1.5)
 
 # Export the volcano
 export.volcano <- FALSE
@@ -353,37 +342,214 @@ if(export.volcano == TRUE){
 print(volcano.output$volcano.plot)
 
 # Subset the annotation just for the heatmap annotations of interest
-annotation.heatmap <- lmm.input$annotation %>% 
-  select(names(anno.colors)) %>% 
-  arrange(Treatment_group)
+#annotation.heatmap <- lmm.input$annotation %>% 
+#  select(names(anno.colors)) %>% 
+#  arrange(Treatment_group)
+#
+#heatmap.plot <- make_heatmap(
+#  normalized.log.counts.df = lmm.input$log.counts, 
+#  de.results = results.df, 
+#  top.degs = TRUE, 
+#  annotation.column = annotation.heatmap,
+#  annotation.row = NULL, 
+#  anno.colors = anno.colors, 
+#  cluster.rows = TRUE, 
+#  cluster.columns = TRUE, 
+#  main.title = contrast.name, 
+#  row.gaps = NULL, 
+#  column.gaps = NULL, 
+#  show.colnames = FALSE, 
+#  show.rownames = TRUE)
+#
+#print(heatmap.plot)
 
-heatmap.plot <- make_heatmap(
-  normalized.log.counts.df = lmm.input$log.counts, 
-  de.results = results.df, 
-  top.degs = TRUE, 
-  annotation.column = annotation.heatmap,
-  annotation.row = NULL, 
-  anno.colors = anno.colors, 
-  cluster.rows = TRUE, 
-  cluster.columns = TRUE, 
-  main.title = contrast.name, 
-  row.gaps = NULL, 
-  column.gaps = NULL, 
-  show.colnames = FALSE, 
-  show.rownames = TRUE)
+#export.heatmap <- FALSE
+#if(export.heatmap == TRUE){
+#  
+#  ggsave(heatmap.plot, 
+#         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot#.png"), 
+#         width = 14, 
+#         height = 10)
+#  
+#}
+#
+## GSEA Preranked List
+#
+#gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
+#                                         contrast.levels = contrast.groups, 
+#                                         annotation = lmm.input$annotation,
+#                                         log.counts = lmm.input$log.counts)
+#
+#export.gsea.input <- FALSE
+#if(export.gsea.input == TRUE){
+#  
+#  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, #"_gsea_preranked_input.csv"), row.names = FALSE)
+#  
+#}
 
-print(heatmap.plot)
 
-export.heatmap <- FALSE
-if(export.heatmap == TRUE){
+```
+
+#### DKD - Tubule - PanCK Pos vs. Neg
+
+```{r}
+
+#| warning: false
+#| message: false
+
+# Name for the contrast 
+contrast.name <- "DKD_glomerulus_vs_tubule"
+
+subset.group.1 <- list(class = c("DKD"), 
+                       region = c("tubule"), 
+                       segment = c("PanCK_pos"))
+
+subset.group.2 <- list(class = c("DKD"), 
+                       region = c("tubule"), 
+                       segment = c("PanCK_neg"))
+
+lmm.input <- subset_object_for_lmm(object = normalized.object, 
+                      subset.group.1 = subset.group.1, 
+                      subset.group.2 = subset.group.2)
+
+
+# Create summary table of group counts
+summary.table.df <- pData(lmm.input$subset.object) %>%  
+  select(c(names(subset.group.1)))
+
+summary.table <- table(summary.table.df)
+
+print("Sample Numbers per Annotation Group")
+print("-----------------------------------")
+print(summary.table)
+
+# Check if the DE results have already been generated
+DE.result.file <- grepl(contrast.name, DE.results.files)
+if(sum(DE.result.file) == 1) {
   
-  ggsave(heatmap.plot, 
-         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot.png"), 
-         width = 14, 
-         height = 10)
+  # Load the previously generated DE results
+  results.df <- as.data.frame(read.csv(paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv")))
+                              
+} else {
+  # Use the function from the DSPWorkflow package
+
+  # Within slide analysis
+  # Listed contrasts are condition, reference 
+  results.list <- diffExpr(object = lmm.input$subset.object, 
+                        analysis.type = "Within Groups", 
+                        region.col = "segment", 
+                        regions = c("PanCK_pos", "PanCK_neg"), 
+                        group.col = "class", 
+                        groups = c("DKD"), 
+                        n.cores = parallel::detectCores())
+  
+  # Create the results df
+  results.df <- results.list$results
+  
+  write.results <- FALSE
+  if(write.results == TRUE){
+    write.csv(results.df, paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv"))
+    
+    saveRDS(results.df, paste0(params$data.folder, 
+                              params$results.folder, 
+                              contrast.name, "_de_results.RDS"))
+    
+  }
+  
   
 }
 
+# Adjust column names
+logfc.column <- colnames(results.df[grepl("logFC",colnames(results.df))])
+results.df$logfc <- results.df[[logfc.column]]
+
+pval.column <- colnames(results.df[grepl("_pval",colnames(results.df))])
+results.df$pval <- results.df[[pval.column]]
+
+adj.pval.column <- colnames(results.df[grepl("adjpval",colnames(results.df))])
+results.df$padj <- results.df[[adj.pval.column]]
+
+results.df$gene <- results.df$Gene
+
+# Keep only the necessary columns
+results.df <- results.df %>% select(c("gene", 
+                                      "logfc", 
+                                      "pval", 
+                                      "padj"))
+
+
+# Export the results
+export.deg.list <- FALSE
+if(export.deg.list == TRUE){ 
+  write.csv(results.df, 
+            file = paste0(results.folder, run.folder, "DE/DEG_lists/", contrast.name, "_deg_list.csv"), 
+            row.names = FALSE)  
+}
+
+# Make the volcano plot
+volcano.output <- make_volcano(lmm.results = results.df, 
+                               title = contrast.name, 
+                               legend.title = "Expression in PanCK Positive", 
+                               x.axis.title = "logFC", 
+                               fc.limit = 1, 
+                               pos.label.limit = 1.5, 
+                               neg.label.limit = -1.5)
+
+# Export the volcano
+export.volcano <- FALSE
+if(export.volcano == TRUE){ 
+  ggsave(filename = paste0(results.folder, run.folder, "DE/volcano/", contrast.name, "_volcano_plot.png"), 
+         width = 14, 
+         height = 10)
+}
+
+print(volcano.output$volcano.plot)
+
+# Subset the annotation just for the heatmap annotations of interest
+#annotation.heatmap <- lmm.input$annotation %>% 
+#  select(names(anno.colors)) %>% 
+#  arrange(Treatment_group)
+#
+#heatmap.plot <- make_heatmap(
+#  normalized.log.counts.df = lmm.input$log.counts, 
+#  de.results = results.df, 
+#  top.degs = TRUE, 
+#  annotation.column = annotation.heatmap,
+#  annotation.row = NULL, 
+#  anno.colors = anno.colors, 
+#  cluster.rows = TRUE, 
+#  cluster.columns = TRUE, 
+#  main.title = contrast.name, 
+#  row.gaps = NULL, 
+#  column.gaps = NULL, 
+#  show.colnames = FALSE, 
+#  show.rownames = TRUE)
+#
+#print(heatmap.plot)
+
+#export.heatmap <- FALSE
+#if(export.heatmap == TRUE){
+#  
+#  ggsave(heatmap.plot, 
+#         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot#.png"), 
+#         width = 14, 
+#         height = 10)
+#  
+#}
+#
+## GSEA Preranked List
+#
+#gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
+#                                         contrast.levels = contrast.groups, 
+#                                         annotation = lmm.input$annotation,
+#                                         log.counts = lmm.input$log.counts)
+#
+#export.gsea.input <- FALSE
+#if(export.gsea.input == TRUE){
+#  
+#  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, #"_gsea_preranked_input.csv"), row.names = FALSE)
+#  
+#}
 
 
 ```
