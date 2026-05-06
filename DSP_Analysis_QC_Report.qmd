@@ -44,6 +44,7 @@ library(ComplexUpset)
 library(reshape2)
 library(cowplot)
 library(preprocessCore)
+library(standR)
 
 source("DSP_QC_functions.R")
 ```
@@ -186,6 +187,91 @@ qc.output <-  qcProc(object = init.object,
                         min.nuclei = 50,         
                         min.area = 1000,
                         print.plots = FALSE)
+
+# Create the input for standR
+qc.output.standr <-  qcProc(object = init.object,
+                        min.segment.reads = 1000, 
+                        percent.trimmed = 80,    
+                        percent.stitched = 80,   
+                        percent.aligned = 80,    
+                        percent.saturation = 50, 
+                        min.negative.count = 1,   
+                        max.ntc.count = 10000,     
+                        min.nuclei = 1,         
+                        min.area = 1000,
+                        print.plots = FALSE)
+
+# Export Counts and Annotation
+standr.input.list <- list()
+
+# Organize Annotation
+standr.input.list$annotation <- as.data.frame(pData(qc.output.standr$object))
+standr.input.list$annotation$SampleID <- rownames(standr.input.list$annotation)
+standr.input.list$annotation$SegmentDisplayName <- standr.input.list$annotation$segmentID
+
+# Remove all blank spaces from column names
+colnames(standr.input.list$annotation) <- gsub(" ", "", colnames(standr.input.list$annotation))
+
+# For mapping sampleID
+mapping.vector <- setNames(standr.input.list$annotation$segmentID, 
+                       standr.input.list$annotation$SampleID)
+
+
+
+
+# Organize Counts
+standr.input.list$counts <- as.data.frame(qc.output.standr$object@assayData$exprs)
+
+# Map column names to segmentID 
+colnames(standr.input.list$counts) <- ifelse(
+  colnames(standr.input.list$counts) %in% names(mapping.vector),
+  mapping.vector[colnames(standr.input.list$counts)],
+  colnames(standr.input.list$counts)
+)
+
+standr.input.list$counts$TargetName <- rownames(standr.input.list$counts)
+standr.input.list$counts <- standr.input.list$counts %>% 
+  select(TargetName, everything())
+
+
+
+
+
+
+
+# Organize Feature File
+standr.input.list$features <- as.data.frame(fData(qc.output.standr$object))
+standr.input.list$features <- standr.input.list$features %>% 
+  select(TargetName, CodeClass, GeneID)
+
+
+
+export <- FALSE
+if(export){
+  
+  write.table(standr.input.list$annotation, 
+            file = paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_anno.tsv"), 
+            row.names = FALSE, 
+            sep = "\t", 
+            quote = FALSE)
+  
+  write.table(standr.input.list$counts, 
+            file = paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_counts.tsv"), 
+            row.names = FALSE, 
+            sep = "\t", 
+            quote = FALSE)
+  
+  write.table(standr.input.list$features, 
+            file = paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_features.tsv"), 
+            row.names = FALSE, 
+            sep = "\t", 
+            quote = FALSE)
+  
+  
+}
     
 
 ```
@@ -197,6 +283,10 @@ Summary of QC for AOIs and Probes
 qc.output$table
 
 ```
+
+## StandR
+
+## Nanostring Default QC Pipeline
 
 #### AOI QC
 
