@@ -985,6 +985,7 @@ improved_make_volcano <- function(lmm.results,
     
   } else {
     
+    
     # Label the custom genes depending on significance
     lmm.results <- lmm.results %>% 
       mutate(custom.label = ifelse(!is.na(deglabel) & de_direction == "NONE", 
@@ -993,14 +994,25 @@ improved_make_volcano <- function(lmm.results,
                                           de_direction, 
                                           "NONE")))
     
-    contrast.level.colors <- c("steelblue4", "grey", "violetred4", "black")
+    contrast.level.colors <- c(downDE.color, nonDE.color, upDE.color, "black")
     names(contrast.level.colors) <- c("DOWN", "NONE", "UP", "BLACK")
     
-    lmm.results.labeled <- lmm.results %>%
-      filter(custom.label != "NONE")
+    #lmm.results.labeled <- lmm.results %>%
+    #  filter(custom.label != "NONE")
+    
+    lmm.results.labeled <- lmm.results %>% 
+      filter(de_direction != "NONE")
+    
+    lmm.results.labeled <- lmm.results.labeled %>% 
+      mutate(custom.label = ifelse(is.na(deglabel), # condition
+                                   de_direction, # if true
+                                   custom.label))
+    
+    #lmm.results.unlabeled <- lmm.results %>% 
+    #  filter(custom.label == "NONE")
     
     lmm.results.unlabeled <- lmm.results %>% 
-      filter(custom.label == "NONE")
+      filter(de_direction == "NONE")
     
     
     volcano.plot <- ggplot() + 
@@ -1024,8 +1036,9 @@ improved_make_volcano <- function(lmm.results,
       geom_text_repel(data = lmm.results.labeled,
                       aes(x = logfc, 
                           y = -log10(padj), 
-                          label = deglabel, 
-                          col = custom.label), 
+                          label = deglabel), 
+                      size = label.size,
+                      color = "black", 
                       max.overlaps = Inf, 
                       show.legend = FALSE) + 
       scale_alpha_identity(guide = "none") + 
