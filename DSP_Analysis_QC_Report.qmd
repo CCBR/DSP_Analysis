@@ -45,6 +45,7 @@ library(reshape2)
 library(cowplot)
 library(preprocessCore)
 library(standR)
+library(SummarizedExperiment)
 
 source("DSP_QC_functions.R")
 ```
@@ -209,6 +210,14 @@ standr.input.list$annotation <- as.data.frame(pData(qc.output.standr$object))
 standr.input.list$annotation$SampleID <- rownames(standr.input.list$annotation)
 standr.input.list$annotation$SegmentDisplayName <- standr.input.list$annotation$segmentID
 
+# Add required columns for StandR if missing
+if(!("ROICoordinateX" %in% colnames(standr.input.list$annotation))){
+  
+  standr.input.list$annotation$ROICoordinateX <- 1
+  standr.input.list$annotation$ROICoordinateY <- 1
+  
+}
+
 # Remove all blank spaces from column names
 colnames(standr.input.list$annotation) <- gsub(" ", "", colnames(standr.input.list$annotation))
 
@@ -276,6 +285,144 @@ if(export){
 
 ```
 
+## StandR
+
+### Load and Create the Spatial Object
+
+```{r}
+
+count.file <- paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_counts.tsv")
+anno.file <- paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_anno.tsv")
+feature.file <- paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_features.tsv")
+
+spatial.object.standr <- readGeoMx(count.file, 
+                                   anno.file, 
+                                   featureAnnoFile = feature.file , 
+                                   rmNegProbe = TRUE)
+
+
+```
+
+#### Filter Out Genes
+
+```{r}
+
+# Check for collinearity, all fields should have values independent of any other fields
+# Example, if all AOIs with class A have region interior and all AOIs with class B have region exterior, create a combined class|region field
+
+# Sample fraction is the fraction of all AOIs a gene is found below the min count
+# Counts are converted to logCPM before sample fractiopn evaluation
+min.count <- 5
+
+spatial.object.standr.gene.QC <- addPerROIQC(spatial.object.standr, 
+                                             sample_fraction = 0.9,
+                                             min_count = min.count, 
+                                             rm_genes = TRUE)
+
+# Determine genes that were removed
+genes.before.qc <- rownames(spatial.object.standr)
+genes.after.qc  <- rownames(spatial.object.standr.gene.QC)
+
+genes.removed.from.qc <- setdiff(genes.before.qc, genes.after.qc)
+length(genes.removed.from.qc)
+
+print(paste0(length(genes.removed.from.qc), " genes were removed based on sample fracton"))
+
+# A plot to show gene expression relative to the min count threshold
+gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC, 
+                           ordannots = "slide_name", 
+                           col = slide_name, 
+                           point_size = 2)
+
+
+```
+
+#### Filter Out ROIs
+
+```{r}
+
+# Check the library size cutoff versusthe overall AOI distribution
+lib.size.cutoff = 50000
+roi.qc.plot <- plotROIQC(spatial.object.standr.gene.QC, 
+                         y_threshold = lib.size.cutoff, 
+                         col = slide_name, 
+                         x_axis = "nuclei")
+
+# Remove all ROIs velow the lib size cutoff
+spatial.object.standr.aoi.QC <- spatial.object.standr.gene.QC[,rownames(colData(spatial.object.standr.gene.QC))[colData(spatial.object.standr.gene.QC)$lib_size > 50000]]
+
+aois.before.qc <- colnames(spatial.object.standr.gene.QC)
+aois.after.qc <- colnames(spatial.object.standr.aoi.QC)
+
+aois.removed.from.qc <- setdiff(aois.before.qc, aois.after.qc)
+
+cat("AOIs removed", "\n", aois.removed.from.qc)
+
+
+```
+
+#### Apply Normalization and Batch Correction
+
+```{r}
+
+# Apply Normalization
+spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, method = "TMM")
+
+spatial.object.standr.normalized <- findNCGs(spatial.object.standr.normalized, 
+                                             batch_name = "slide_name", 
+                                             top_n = 200)
+
+ncg.genes <- metadata(spatial.object.standr.normalized)$NCG
+
+
+normalized.counts <- assay(spatial.object.standr.normalized)
+
+var.genes <- apply(
+  normalized.counts[ncg.genes, , drop = FALSE],
+  1,
+  var
+)
+
+ncg.var.df <- data.frame(
+  gene = ncg.genes,
+  variance = var.genes
+)
+
+log.cpm.counts <- assay(spatial.object.standr.normalized, "logcounts")
+var.all <- matrixStats::rowVars(log.cpm.counts)
+var.ncg <- var.all[ncg.genes]
+var.ncg.hist <- hist(var.ncg, breaks = 50, main = "Gene variance distribution")
+var.ncg.quantiles <- quantile(var.ncg, probs = c(0.1, 0.25, 0.5, 0.75, 0.9))
+
+
+var.ncg <- var.all[ncg.genes]
+
+boxplot(var.all, var.ncg, names = c("All genes", "NCGs"))
+
+
+var.rank <- rank(var.all)
+
+
+mean.ncg.var.rank <- mean(var.rank[ncg.genes]) / length(var.all)
+
+log.cpm.means <- rowMeans(log.cpm.counts[ncg.genes,])
+
+var.means.plot <- plot(log.cpm.means, var.ncg, pch = 16, cex = 0.5)
+
+experimental.fields <- c("class", "region", "segment", "pathology")
+
+spatial.object.standr.ruv <- geomxBatchCorrection(spatial.object.standr.normalized, 
+                                factors = experimental.fields, 
+                                NCGs = metadata(spatial.object.standr.normalized)$NCGs, 
+                                k = 5)
+
+```
+
+## Nanostring Default QC Pipeline
+
 Summary of QC for AOIs and Probes
 
 ```{r QC Summary}
@@ -284,9 +431,7 @@ qc.output$table
 
 ```
 
-## StandR
-
-## Nanostring Default QC Pipeline
+## 
 
 #### AOI QC
 
