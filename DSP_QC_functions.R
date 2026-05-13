@@ -1263,7 +1263,8 @@ gene_counts_violin_boxplot <- function(counts,
 # Create biplots for PCA of all three normalization types 
 # Assumes there are three PCA outputs in the PCA.table.list
 PCA_biplots <- function(pca.table.list, 
-                        color.group) {
+                        color.group, 
+                        color.key = NULL) {
   
   plot.list <- list()
   
@@ -1273,6 +1274,7 @@ PCA_biplots <- function(pca.table.list,
     
     pca.plot <- biplot(pca.table, 
                        colby = color.group, 
+                       colkey = color.key, 
                        legendPosition = "right", 
                        legendLabSize = 10, 
                        legendIconSize = 5, 
