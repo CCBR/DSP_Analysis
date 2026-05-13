@@ -139,6 +139,7 @@ if(export){
 #| fig-cap: "Sankey Plot"
 #| warning: false
 
+# Plot the default fields
 sankey.output <- plot_sankey(object = init.object, 
                       lane.1 = "slide", 
                       lane.1.order = c("disease3", 
@@ -160,6 +161,45 @@ sankey.output <- plot_sankey(object = init.object,
                       fill.lane = "region")
 
 print(sankey.output$sankey.plot)
+  
+# Investigate fields for collinearity 
+sankey.output.check <- plot_sankey(object = init.object, 
+                      lane.1 = "class", 
+                      lane.1.order = c("DKD", "normal"),
+                      lane.2 = "region", 
+                      lane.2.order = c("glomerulus", 
+                                       "tubule"), 
+                      lane.3 = "pathology", 
+                      lane.3.order = c("abnormal", "normal", "NA"), 
+                      lane.4 = "segment", 
+                      lane.4.order = c("GeometricSegment", 
+                                       "PanCK_pos", 
+                                       "PanCK_neg"),
+                      fill.lane = "region")
+
+
+print(sankey.output.check$sankey.plot)
+
+# Combine columns to fix collinearity
+pData(init.object)$combined_coll_annotations <- paste0(pData(init.object)$region, 
+                                                       "_", 
+                                                       pData(init.object)$pathology, 
+                                                       "_", 
+                                                       pData(init.object)$segment)
+
+# Check corrected collinearity
+sankey.output.corrected <- plot_sankey(object = init.object, 
+                                       lane.1 = "slide", 
+                                       lane.1.order = unique(pData(init.object)$slide),
+                                       lane.2 = "class", 
+                                       lane.2.order = c("DKD", "normal"), 
+                                       lane.3 = "combined_coll_annotations", 
+                                       lane.3.order = unique(pData(init.object)$combined_coll_annotations), 
+                                       lane.4 = "pathology", 
+                                       lane.4.order = c("abnormal", "NA", "normal"), 
+                                       fill.lane = "class")
+
+print(sankey.output.corrected$sankey.plot)
 ```
 
 @fig-aoibarplot shows the total AOI counts per annotation
@@ -210,6 +250,9 @@ standr.input.list$annotation <- as.data.frame(pData(qc.output.standr$object))
 standr.input.list$annotation$SampleID <- rownames(standr.input.list$annotation)
 standr.input.list$annotation$SegmentDisplayName <- standr.input.list$annotation$segmentID
 
+# Combine fields that create collinearity
+
+
 # Add required columns for StandR if missing
 if(!("ROICoordinateX" %in% colnames(standr.input.list$annotation))){
   
@@ -226,8 +269,6 @@ mapping.vector <- setNames(standr.input.list$annotation$segmentID,
                        standr.input.list$annotation$SampleID)
 
 
-
-
 # Organize Counts
 standr.input.list$counts <- as.data.frame(qc.output.standr$object@assayData$exprs)
 
@@ -242,12 +283,6 @@ standr.input.list$counts$TargetName <- rownames(standr.input.list$counts)
 standr.input.list$counts <- standr.input.list$counts %>% 
   select(TargetName, everything())
 
-
-
-
-
-
-
 # Organize Feature File
 standr.input.list$features <- as.data.frame(fData(qc.output.standr$object))
 standr.input.list$features <- standr.input.list$features %>% 
@@ -255,7 +290,7 @@ standr.input.list$features <- standr.input.list$features %>%
 
 
 
-export <- FALSE
+export <- TRUE
 if(export){
   
   write.table(standr.input.list$annotation, 
@@ -375,6 +410,8 @@ spatial.object.standr.normalized <- findNCGs(spatial.object.standr.normalized,
                                              batch_name = "slide_name", 
                                              top_n = 200)
 
+
+
 ncg.genes <- metadata(spatial.object.standr.normalized)$NCG
 
 
@@ -412,12 +449,22 @@ log.cpm.means <- rowMeans(log.cpm.counts[ncg.genes,])
 
 var.means.plot <- plot(log.cpm.means, var.ncg, pch = 16, cex = 0.5)
 
-experimental.fields <- c("class", "region", "segment", "pathology")
+experimental.fields <- c("combined_coll_annotations", "class")
 
-spatial.object.standr.ruv <- geomxBatchCorrection(spatial.object.standr.normalized, 
+spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.normalized, 
                                 factors = experimental.fields, 
                                 NCGs = metadata(spatial.object.standr.normalized)$NCGs, 
-                                k = 5)
+                                k = 2)
+
+# Extract the counts
+standr.counts.list <- list()
+
+standr.counts.list[["pre_norm"]] <- assay(spatial.object.standr.aoi.QC, "logcounts")
+standr.counts.list[["TMM_norm"]] <- assay(spatial.object.standr.normalized, "logcounts")
+standr.counts.list[["ruv_corrected"]] <- assay(spatial.object.standr.final, "logcounts")
+
+standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
+
 
 ```
 
@@ -430,8 +477,6 @@ Summary of QC for AOIs and Probes
 qc.output$table
 
 ```
-
-## 
 
 #### AOI QC
 
@@ -732,7 +777,7 @@ print(nuclei.plot)
 
 ```{r Normalization, warning=FALSE, message=FALSE}
 
-q3.normalization.output <- geomxNorm(
+q3.normalization.output <- DSPWorkflow::geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "q3")
 
@@ -740,7 +785,7 @@ q3.normalization.output <- geomxNorm(
 pData(q3.normalization.output$object)$fixed_value_column <- "value"
     
     
-neg.normalization.output <- geomxNorm(
+neg.normalization.output <- DSPWorkflow::geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
 
@@ -803,16 +848,17 @@ if(export.norm.object == TRUE){
 
 ```
 
-#### RLE Plots
+#### RLE Plots for Nanostring Default
 
-```{r RLE Plots}
+```{r RLE Plots Default}
 #| warning: false
 #| message: false
 
 # Counts
-raw.counts <- q3.normalization.output$object@assayData$exprs
-q3.counts <- q3.normalization.output$object@assayData$q_norm
-neg.counts <- neg.normalization.output$object@assayData$neg_norm
+raw.log.counts <- log2(q3.normalization.output$object@assayData$exprs + 1)
+q3.log.counts <- log2(q3.normalization.output$object@assayData$q_norm + 1)
+neg.log.counts <- log2(neg.normalization.output$object@assayData$neg_norm + 1)
+quantile.log.counts <- log2(quantile.normalization.counts + 1)
 
 # Annotation
 annotation <- pData(q3.normalization.output$object)
@@ -823,22 +869,22 @@ annotation.facet <- "slide_name"
 # The ammount to subsample, with 1 being no subsampling
 subsample.ammount <- 0.2
 
-raw.rle <- make_rle_plot(counts = raw.counts, 
+raw.rle <- make_rle_plot(counts = raw.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
 
-q3.rle <- make_rle_plot(counts = q3.counts, 
+q3.rle <- make_rle_plot(counts = q3.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
 
-neg.rle <- make_rle_plot(counts = neg.counts, 
+neg.rle <- make_rle_plot(counts = neg.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
 
-quant.rle <- make_rle_plot(counts = quantile.normalization.counts, 
+quant.rle <- make_rle_plot(counts = quantile.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
@@ -851,76 +897,57 @@ print(quant.rle)
 
 
 
+
+
 ```
 
-#### **Example AOIs**
+#### RLE Plots for StandR
 
-```{r Normalization Effects on Counts, fig.width=12, fig.height=8}
-#| label: fig-NormEffects
-#| fig-cap: "Normalization Effects on Counts"
+```{r RLE Plots StandR}
 #| warning: false
 #| message: false
 
-# The raw counts boxplot
-transform1.raw<- exprs(q3.normalization.output$object[,1:30])
-transform2.raw<- as.data.frame(transform1.raw)
-transform3.raw<- melt(transform2.raw)
-ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="grey") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Raw") +
-  ggtitle("Neg Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# Counts
+prenorm.counts <- standr.counts.list$pre_norm
+norm.counts <- standr.counts.list$TMM_norm
+ruv.counts <- standr.counts.list$ruv_corrected
 
-# The Q3 normalized counts boxplot
-transform1.norm <- assayDataElement(q3.normalization.output$object[,1:30], elt = "q_norm")
-transform2.norm <- as.data.frame(transform1.norm)
-transform3.norm <- melt(transform2.norm)
-ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="cadetblue2") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Q3 Normalized") +
-  ggtitle("Q3 Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# Annotation
+annotation <- standr.aoi.annotation
 
-# The Negative normalized counts boxplot
-transform1.norm <- assayDataElement(neg.normalization.output$object[,1:30], elt = "neg_norm")
-transform2.norm <- as.data.frame(transform1.norm)
-transform3.norm <- melt(transform2.norm)
-ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="indianred") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Neg. Normalized") +
-  ggtitle("Neg Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# Annotation to groupo by
+annotation.facet <- "slide_name"
 
-# The Negative normalized counts boxplot
-transform1.norm <- quantile.normalization.counts[,1:30]
-transform2.norm <- melt(transform1.norm)
-ggboxplot.quantnorm <- ggplot(transform2.norm, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="darkseagreen") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Neg. Normalized") +
-  ggtitle("Neg Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# The ammount to subsample, with 1 being no subsampling
+subsample.ammount <- 0.2
 
-print(ggboxplot.raw)
-print(ggboxplot.q3norm)
-print(ggboxplot.negnorm)
-print(ggboxplot.quantnorm)
+prenorm.rle <- make_rle_plot(counts = prenorm.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+norm.rle <- make_rle_plot(counts = norm.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+ruv.rle <- make_rle_plot(counts = ruv.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+
+print(prenorm.rle)
+print(norm.rle)
+print(ruv.rle)
+
+
+
 
 
 ```
 
-#### Principal Component Analysis (PCA)
+#### Principal Component Analysis (PCA) for Nanostring Default
 
 ```{r PCA, warning=FALSE, message=FALSE}
 
