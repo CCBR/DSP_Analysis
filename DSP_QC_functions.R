@@ -1279,7 +1279,7 @@ PCA_biplots <- function(pca.table.list,
                        legendLabSize = 10, 
                        legendIconSize = 5, 
                        lab = NULL,
-                       title = paste0(norm.type, " Normalization"))
+                       title = paste0(norm.type))
     
     plot.list[[norm.type]] <- pca.plot
     

@@ -949,7 +949,7 @@ print(ruv.rle)
 
 #### Principal Component Analysis (PCA) for Nanostring Default
 
-```{r PCA, warning=FALSE, message=FALSE}
+```{r PCA Default, warning=FALSE, message=FALSE}
 
 # See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction
 
@@ -1008,159 +1008,142 @@ quant.pca.table <- pca(quant.log.counts.df,
                  metadata = cleaned.annotation.df, 
                  removeVar = 0.1)
 
+default.pca.list <- list("q3" = q3.pca.table, 
+                         "neg" = neg.pca.table, 
+                         "quant" = quant.pca.table)
+
+```
+
+#### Principal Component Analysis (PCA) for StandR
+
+```{r PCA standr, warning=FALSE, message=FALSE}
+
+
+# Load the annotation (same for both normalization types)
+annotation <- standr.aoi.annotation
+
+# Generate a PCA table for all samples for both normalization types
+prenorm.pca.table <- pca(standr.counts.list$pre_norm, 
+                 metadata = annotation, 
+                 removeVar = 0.1)
+norm.pca.table <- pca(standr.counts.list$TMM_norm, 
+                 metadata = annotation, 
+                 removeVar = 0.1)
+ruv.pca.table <- pca(standr.counts.list$ruv_corrected, 
+                 metadata = annotation, 
+                 removeVar = 0.1)
+
+standr.pca.list <- list("prenorm" = prenorm.pca.table, 
+                        "norm" = norm.pca.table, 
+                        "ruv" = ruv.pca.table)
+
+
+
 ```
 
 #### PCA by Segment
 
-```{r PCA for Q3 segment, fig.width=12, fig.height=8}
-#| label: fig-PCAsegmentQ3
-#| fig-cap: "PCA colored by Segment for Q3 Normalization"
+```{r PCA for Segment, fig.width=12, fig.height=8}
+#| label: fig-PCAsegment
+#| fig-cap: "PCA colored by Segment"
 #| warning: false
 
-q3.pca.plot.segment <- biplot(q3.pca.table, 
-                         colby = "segment", 
-                         legendPosition = "right", 
-                         legendLabSize = 6, 
-                         legendIconSize = 3, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.segment <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "segment")
 
-print(q3.pca.plot.segment)
+standr.pca.segment <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "segment")
 
-```
-
-```{r PCA for Negative segment, fig.width=12, fig.height=8}
-#| label: fig-PCAsegmentNeg
-#| fig-cap: "PCA colored by Segment for Negative Normalization"
-#| warning: false
-
-neg.pca.plot.segment <- biplot(neg.pca.table, 
-                         colby = "segment", 
-                         legendPosition = "right", 
-                         legendLabSize = 6, 
-                         legendIconSize = 3, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
-
-print(neg.pca.plot.segment)
+print(default.pca.segment)
+print(standr.pca.segment)
 
 ```
 
 #### PCA by Region
 
-```{r PCA for Q3 region, fig.width=12, fig.height=8}
-#| label: fig-PCAregionQ3
-#| fig-cap: "PCA colored by Region for Q3 Normalization"
+```{r PCA for Region, fig.width=12, fig.height=8}
+#| label: fig-PCAregion
+#| fig-cap: "PCA colored by Region"
 #| warning: false
 
-q3.pca.plot.region <- biplot(q3.pca.table, 
-                         colby = "region", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.region <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "region")
 
-
-print(q3.pca.plot.region)
-
-```
-
-```{r PCA for Neg region, fig.width=12, fig.height=8}
-#| label: fig-PCAregionNeg
-#| fig-cap: "PCA colored by Region for Negative Normalization"
-#| warning: false
-
-neg.pca.plot.region <- biplot(neg.pca.table, 
-                         colby = "region", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
-
-print(neg.pca.plot.region)
-
+standr.pca.region <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "region")
+s
+print(default.pca.region)
+print(standr.pca.region)
 ```
 
 #### PCA by Class
 
-```{r PCA for Q3 class, fig.width=12, fig.height=8}
-#| label: fig-PCAclassQ3
-#| fig-cap: "PCA colored by Class for Q3 Normalization"
+```{r PCA for Class, fig.width=12, fig.height=8}
+#| label: fig-PCAclass
+#| fig-cap: "PCA colored by Class"
 #| warning: false
 
-q3.pca.plot.class <- biplot(q3.pca.table, 
-                         colby = "class", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.class <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "class")
 
-print(q3.pca.plot.class)
+standr.pca.class <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "class")
 
-```
-
-```{r PCA for Negative class, fig.width=12, fig.height=8}
-#| label: fig-PCAclassNeg
-#| fig-cap: "PCA colored by Class for Negative Normalization"
-#| warning: false
-
-neg.pca.plot.class <- biplot(neg.pca.table, 
-                         colby = "class", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
-
-print(neg.pca.plot.class)
+print(default.pca.class)
+print(standr.pca.class)
 
 ```
 
 #### PCA by Slide
 
-```{r PCA for Q3 slide, fig.width=12, fig.height=8}
-#| label: fig-PCAslideQ3
-#| fig-cap: "PCA colored by Slide for Q3 Normalization"
+```{r PCA for Slide, fig.width=12, fig.height=8}
+#| label: fig-PCAslide
+#| fig-cap: "PCA colored by Slide"
 #| warning: false
 
+default.pca.slide <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "slide_name")
 
-q3.pca.plot.slide <- biplot(q3.pca.table, 
-                         colby = "slide_name", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+standr.pca.slide <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "slide_name")
 
-print(q3.pca.plot.slide)
+print(default.pca.slide)
+print(standr.pca.slide)
 
 ```
 
-```{r PCA for Neg slide, fig.width=12, fig.height=8}
-#| label: fig-PCAslideNeg
-#| fig-cap: "PCA colored by Slide for Negative Normalization"
+#### PCA by Combined Annotations
+
+```{r PCA for Combined Annotations, fig.width=12, fig.height=8}
+#| label: fig-PCAcombined
+#| fig-cap: "PCA colored by Combined Annotations"
 #| warning: false
 
-neg.pca.plot.slide <- biplot(neg.pca.table, 
-                         colby = "slide_name", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.comb <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "combined_coll_annotations")
 
-print(neg.pca.plot.slide)
+standr.pca.comb <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "combined_coll_annotations")
+
+print(default.pca.comb)
+print(standr.pca.comb)
+```
+
+#### PCA by Pathology
+
+```{r PCA for Pathology, fig.width=12, fig.height=8}
+#| label: fig-PCApathology
+#| fig-cap: "PCA colored by Pathology"
+#| warning: false
+
+default.pca.path <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "pathology")
+
+standr.pca.path <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "pathology")
+
+print(default.pca.path)
+print(standr.pca.path)
 
 ```
 
