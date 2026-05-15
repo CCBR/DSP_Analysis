@@ -1147,6 +1147,21 @@ print(standr.pca.path)
 
 ```
 
+#### Compare Nanostring and StandR
+
+```{r}
+
+# Create a list of everything to compare
+comparison.pca.list <- list(Q3 = default.pca.list$q3,
+                            Quantile = default.pca.list$quant,
+                            RUV = standr.pca.list$ruv)
+
+comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list, 
+                              color.group = "combined_coll_annotations", 
+                              show.loadings = FALSE)
+
+```
+
 #### Export PCA tables
 
 ```{r PCA Exports}
@@ -1265,9 +1280,6 @@ if(export){
 ```{r}
 # Set up pre and post normalization counts and convert to log
 
-pre.norm.counts <-
-  log(as.data.frame(q3.normalization.output$object@assayData$exprs), base = 2)
-
 post.q3norm.logcounts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
 
 post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
@@ -1275,7 +1287,7 @@ post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assa
 quantile.normalization.logcounts <- log(quantile.normalization.counts, base = 2)
 
 # Setup annotation groups for the ratio "M" (log A - log B)
-region.types <- c("DKD", "normal")
+region.types <- c("glomerulus", "tubule")
 
 # Define the name of the contrast
 contrast.name <- paste0(region.types[[1]], 
@@ -1283,14 +1295,17 @@ contrast.name <- paste0(region.types[[1]],
                         region.types[[2]])
 
 # Set up the annotations and raw counts for the MA plots
-contrast.field <- "class"
-condition.label <- "DKD"
-reference.label <- "normal"
-raw.log.counts <- pre.norm.counts
-annotation.MA <- annotation
+contrast.field <- "region"
+condition.label <- "glomerulus"
+reference.label <- "tubule"
+raw.log.counts <- log(as.data.frame(qc.output$object@assayData$exprs), base = 2)
+raw.log.counts.standr <- log(as.data.frame(qc.output.standr$object@assayData$exprs), base = 2)
+annotation.MA <- cleaned.annotation.df
 ```
 
 #### Q3 Normalization
+
+grid.draw(MA.plots.q3)
 
 ```{r MA Plot Q3, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 # MA plots for two annotation groups to evaluate negative normalization
@@ -1341,6 +1356,57 @@ MA.plots.quant <- make_MA(contrast.field = contrast.field,
   
   
 grid.draw(MA.plots.quant)
+
+
+```
+
+### MA Plots for StandR
+
+```{r}
+# Set up pre and post normalization counts and convert to log
+ID.mapping <- setNames(rownames(standr.aoi.annotation), standr.aoi.annotation$SampleID)
+
+raw.log.counts.standr <- raw.log.counts.standr[, colnames(raw.log.counts.standr) %in% names(ID.mapping), 
+                                        drop = FALSE]
+
+# Rename remaining columns
+colnames(raw.log.counts.standr) <- ID.mapping[colnames(raw.log.counts.standr)]
+
+
+```
+
+#### StandR TMM Normalization
+
+```{r MA Plot TMM, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
+
+MA.plots.tmm <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = standr.counts.list$TMM_norm, 
+                    raw.log.counts = raw.log.counts.standr, 
+                    annotation = standr.aoi.annotation)
+  
+
+grid.draw(MA.plots.tmm)
+
+
+```
+
+#### StandR Ruv Correction
+
+```{r MA Plot RUV, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
+
+MA.plots.ruv <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = standr.counts.list$ruv_corrected, 
+                    raw.log.counts = raw.log.counts.standr, 
+                    annotation = standr.aoi.annotation)
+  
+  
+grid.draw(MA.plots.ruv)
+
+
 
 
 ```
