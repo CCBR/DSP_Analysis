@@ -1070,3 +1070,18 @@ if(export.decon.boxplots == TRUE){
 }
 
 ```
+
+## StandR Analysis
+
+### Inputs
+
+```{r}
+
+# Load the StandR RUV object
+
+standr.ruv.object <- readRDS(file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+
+
+
+
+```

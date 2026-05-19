@@ -403,16 +403,17 @@ cat("AOIs removed", "\n", aois.removed.from.qc)
 
 ```{r}
 
-# Apply Normalization
+# Apply Normalization for Evaluation
 spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, method = "TMM")
 
-spatial.object.standr.normalized <- findNCGs(spatial.object.standr.normalized, 
+# Run RUV on non-Normalized data
+spatial.object.standr.ruv <- findNCGs(spatial.object.standr.aoi.QC, 
                                              batch_name = "slide_name", 
                                              top_n = 200)
 
 
 
-ncg.genes <- metadata(spatial.object.standr.normalized)$NCG
+ncg.genes <- metadata(spatial.object.standr.ruv)$NCG
 
 
 normalized.counts <- assay(spatial.object.standr.normalized)
@@ -451,9 +452,9 @@ var.means.plot <- plot(log.cpm.means, var.ncg, pch = 16, cex = 0.5)
 
 experimental.fields <- c("combined_coll_annotations", "class")
 
-spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.normalized, 
+spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.ruv, 
                                 factors = experimental.fields, 
-                                NCGs = metadata(spatial.object.standr.normalized)$NCGs, 
+                                NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
                                 k = 2)
 
 # Extract the counts
@@ -464,6 +465,17 @@ standr.counts.list[["TMM_norm"]] <- assay(spatial.object.standr.normalized, "log
 standr.counts.list[["ruv_corrected"]] <- assay(spatial.object.standr.final, "logcounts")
 
 standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
+
+
+```
+
+### Export for DE Analysis
+
+```{r Export StandR counts for DE}
+
+# Export the inputs for DE Analysis
+saveRDS(spatial.object.standr.final, file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+
 
 
 ```
