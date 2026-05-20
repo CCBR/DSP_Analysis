@@ -144,7 +144,7 @@ plot_sankey <- function(object,
   # names with spaces or special symbols
   
   # Create a count matrix
-  count.mat <- count(pData(object), 
+  count.mat <- dplyr::count(pData(object), 
                      !!as.name(lane.1), 
                      !!as.name(lane.2), 
                      !!as.name(lane.3), 
