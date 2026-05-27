@@ -780,9 +780,11 @@ make_MA <- function(contrast.field,
   reference.samples <- rownames(annotation[annotation[[contrast.field]] == reference.label, ])
   
   # Gather normalized and raw counts for both groups
+  colnames(log.counts) <- gsub("\\.dcc", "", colnames(log.counts))
   condition.counts <- as.data.frame(log.counts[, condition.samples])
   reference.counts <- as.data.frame(log.counts[, reference.samples])
   
+  colnames(raw.log.counts) <- gsub("\\.dcc", "", colnames(raw.log.counts))
   condition.raw.counts <- as.data.frame(raw.log.counts[, condition.samples])
   reference.raw.counts <- as.data.frame(raw.log.counts[, reference.samples])  
   
@@ -1264,7 +1266,8 @@ gene_counts_violin_boxplot <- function(counts,
 # Assumes there are three PCA outputs in the PCA.table.list
 PCA_biplots <- function(pca.table.list, 
                         color.group, 
-                        color.key = NULL) {
+                        color.key = NULL, 
+                        show.loadings = FALSE) {
   
   plot.list <- list()
   
@@ -1279,7 +1282,9 @@ PCA_biplots <- function(pca.table.list,
                        legendLabSize = 10, 
                        legendIconSize = 5, 
                        lab = NULL,
-                       title = paste0(norm.type, " Normalization"))
+                       title = paste0(norm.type), 
+                       showLoadings = show.loadings
+                       )
     
     plot.list[[norm.type]] <- pca.plot
     

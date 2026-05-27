@@ -44,6 +44,8 @@ library(ComplexUpset)
 library(reshape2)
 library(cowplot)
 library(preprocessCore)
+library(standR)
+library(SummarizedExperiment)
 
 source("DSP_QC_functions.R")
 ```
@@ -137,6 +139,7 @@ if(export){
 #| fig-cap: "Sankey Plot"
 #| warning: false
 
+# Plot the default fields
 sankey.output <- plot_sankey(object = init.object, 
                       lane.1 = "slide", 
                       lane.1.order = c("disease3", 
@@ -158,6 +161,45 @@ sankey.output <- plot_sankey(object = init.object,
                       fill.lane = "region")
 
 print(sankey.output$sankey.plot)
+  
+# Investigate fields for collinearity 
+sankey.output.check <- plot_sankey(object = init.object, 
+                      lane.1 = "class", 
+                      lane.1.order = c("DKD", "normal"),
+                      lane.2 = "region", 
+                      lane.2.order = c("glomerulus", 
+                                       "tubule"), 
+                      lane.3 = "pathology", 
+                      lane.3.order = c("abnormal", "normal", "NA"), 
+                      lane.4 = "segment", 
+                      lane.4.order = c("GeometricSegment", 
+                                       "PanCK_pos", 
+                                       "PanCK_neg"),
+                      fill.lane = "region")
+
+
+print(sankey.output.check$sankey.plot)
+
+# Combine columns to fix collinearity
+pData(init.object)$combined_coll_annotations <- paste0(pData(init.object)$region, 
+                                                       "_", 
+                                                       pData(init.object)$pathology, 
+                                                       "_", 
+                                                       pData(init.object)$segment)
+
+# Check corrected collinearity
+sankey.output.corrected <- plot_sankey(object = init.object, 
+                                       lane.1 = "slide", 
+                                       lane.1.order = unique(pData(init.object)$slide),
+                                       lane.2 = "class", 
+                                       lane.2.order = c("DKD", "normal"), 
+                                       lane.3 = "combined_coll_annotations", 
+                                       lane.3.order = unique(pData(init.object)$combined_coll_annotations), 
+                                       lane.4 = "pathology", 
+                                       lane.4.order = c("abnormal", "NA", "normal"), 
+                                       fill.lane = "class")
+
+print(sankey.output.corrected$sankey.plot)
 ```
 
 @fig-aoibarplot shows the total AOI counts per annotation
@@ -186,9 +228,259 @@ qc.output <-  qcProc(object = init.object,
                         min.nuclei = 50,         
                         min.area = 1000,
                         print.plots = FALSE)
+
+# Create the input for standR
+qc.output.standr <-  qcProc(object = init.object,
+                        min.segment.reads = 1000, 
+                        percent.trimmed = 80,    
+                        percent.stitched = 80,   
+                        percent.aligned = 80,    
+                        percent.saturation = 50, 
+                        min.negative.count = 1,   
+                        max.ntc.count = 10000,     
+                        min.nuclei = 1,         
+                        min.area = 1000,
+                        print.plots = FALSE)
+
+# Export Counts and Annotation
+standr.input.list <- list()
+
+# Organize Annotation
+standr.input.list$annotation <- as.data.frame(pData(qc.output.standr$object))
+standr.input.list$annotation$SampleID <- rownames(standr.input.list$annotation)
+standr.input.list$annotation$SegmentDisplayName <- standr.input.list$annotation$segmentID
+
+# Combine fields that create collinearity
+
+
+# Add required columns for StandR if missing
+if(!("ROICoordinateX" %in% colnames(standr.input.list$annotation))){
+  
+  standr.input.list$annotation$ROICoordinateX <- 1
+  standr.input.list$annotation$ROICoordinateY <- 1
+  
+}
+
+# Remove all blank spaces from column names
+colnames(standr.input.list$annotation) <- gsub(" ", "", colnames(standr.input.list$annotation))
+
+# For mapping sampleID
+mapping.vector <- setNames(standr.input.list$annotation$segmentID, 
+                       standr.input.list$annotation$SampleID)
+
+
+# Organize Counts
+standr.input.list$counts <- as.data.frame(qc.output.standr$object@assayData$exprs)
+
+# Map column names to segmentID 
+colnames(standr.input.list$counts) <- ifelse(
+  colnames(standr.input.list$counts) %in% names(mapping.vector),
+  mapping.vector[colnames(standr.input.list$counts)],
+  colnames(standr.input.list$counts)
+)
+
+standr.input.list$counts$TargetName <- rownames(standr.input.list$counts)
+standr.input.list$counts <- standr.input.list$counts %>% 
+  select(TargetName, everything())
+
+# Organize Feature File
+standr.input.list$features <- as.data.frame(fData(qc.output.standr$object))
+standr.input.list$features <- standr.input.list$features %>% 
+  select(TargetName, CodeClass, GeneID)
+
+
+
+export <- TRUE
+if(export){
+  
+  write.table(standr.input.list$annotation, 
+            file = paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_anno.tsv"), 
+            row.names = FALSE, 
+            sep = "\t", 
+            quote = FALSE)
+  
+  write.table(standr.input.list$counts, 
+            file = paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_counts.tsv"), 
+            row.names = FALSE, 
+            sep = "\t", 
+            quote = FALSE)
+  
+  write.table(standr.input.list$features, 
+            file = paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_features.tsv"), 
+            row.names = FALSE, 
+            sep = "\t", 
+            quote = FALSE)
+  
+  
+}
     
 
 ```
+
+## StandR
+
+### Load and Create the Spatial Object
+
+```{r}
+
+count.file <- paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_counts.tsv")
+anno.file <- paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_anno.tsv")
+feature.file <- paste0(params$data.folder, 
+                          "StandR/input_files/standr_input_features.tsv")
+
+spatial.object.standr <- readGeoMx(count.file, 
+                                   anno.file, 
+                                   featureAnnoFile = feature.file , 
+                                   rmNegProbe = TRUE)
+
+
+```
+
+#### Filter Out Genes
+
+```{r}
+
+# Check for collinearity, all fields should have values independent of any other fields
+# Example, if all AOIs with class A have region interior and all AOIs with class B have region exterior, create a combined class|region field
+
+# Sample fraction is the fraction of all AOIs a gene is found below the min count
+# Counts are converted to logCPM before sample fractiopn evaluation
+min.count <- 5
+
+spatial.object.standr.gene.QC <- addPerROIQC(spatial.object.standr, 
+                                             sample_fraction = 0.9,
+                                             min_count = min.count, 
+                                             rm_genes = TRUE)
+
+# Determine genes that were removed
+genes.before.qc <- rownames(spatial.object.standr)
+genes.after.qc  <- rownames(spatial.object.standr.gene.QC)
+
+genes.removed.from.qc <- setdiff(genes.before.qc, genes.after.qc)
+length(genes.removed.from.qc)
+
+print(paste0(length(genes.removed.from.qc), " genes were removed based on sample fracton"))
+
+# A plot to show gene expression relative to the min count threshold
+gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC, 
+                           ordannots = "slide_name", 
+                           col = slide_name, 
+                           point_size = 2)
+
+
+```
+
+#### Filter Out ROIs
+
+```{r}
+
+# Check the library size cutoff versusthe overall AOI distribution
+lib.size.cutoff = 50000
+roi.qc.plot <- plotROIQC(spatial.object.standr.gene.QC, 
+                         y_threshold = lib.size.cutoff, 
+                         col = slide_name, 
+                         x_axis = "nuclei")
+
+# Remove all ROIs velow the lib size cutoff
+spatial.object.standr.aoi.QC <- spatial.object.standr.gene.QC[,rownames(colData(spatial.object.standr.gene.QC))[colData(spatial.object.standr.gene.QC)$lib_size > 50000]]
+
+aois.before.qc <- colnames(spatial.object.standr.gene.QC)
+aois.after.qc <- colnames(spatial.object.standr.aoi.QC)
+
+aois.removed.from.qc <- setdiff(aois.before.qc, aois.after.qc)
+
+cat("AOIs removed", "\n", aois.removed.from.qc)
+
+
+```
+
+#### Apply Normalization and Batch Correction
+
+```{r}
+
+# Apply Normalization for Evaluation
+spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, method = "TMM")
+
+# Run RUV on non-Normalized data
+spatial.object.standr.ruv <- findNCGs(spatial.object.standr.aoi.QC, 
+                                             batch_name = "slide_name", 
+                                             top_n = 200)
+
+
+
+ncg.genes <- metadata(spatial.object.standr.ruv)$NCG
+
+
+normalized.counts <- assay(spatial.object.standr.normalized)
+
+var.genes <- apply(
+  normalized.counts[ncg.genes, , drop = FALSE],
+  1,
+  var
+)
+
+ncg.var.df <- data.frame(
+  gene = ncg.genes,
+  variance = var.genes
+)
+
+log.cpm.counts <- assay(spatial.object.standr.normalized, "logcounts")
+var.all <- matrixStats::rowVars(log.cpm.counts)
+var.ncg <- var.all[ncg.genes]
+var.ncg.hist <- hist(var.ncg, breaks = 50, main = "Gene variance distribution")
+var.ncg.quantiles <- quantile(var.ncg, probs = c(0.1, 0.25, 0.5, 0.75, 0.9))
+
+
+var.ncg <- var.all[ncg.genes]
+
+boxplot(var.all, var.ncg, names = c("All genes", "NCGs"))
+
+
+var.rank <- rank(var.all)
+
+
+mean.ncg.var.rank <- mean(var.rank[ncg.genes]) / length(var.all)
+
+log.cpm.means <- rowMeans(log.cpm.counts[ncg.genes,])
+
+var.means.plot <- plot(log.cpm.means, var.ncg, pch = 16, cex = 0.5)
+
+experimental.fields <- c("combined_coll_annotations", "class")
+
+spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.ruv, 
+                                factors = experimental.fields, 
+                                NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
+                                k = 2)
+
+# Extract the counts
+standr.counts.list <- list()
+
+standr.counts.list[["pre_norm"]] <- assay(spatial.object.standr.aoi.QC, "logcounts")
+standr.counts.list[["TMM_norm"]] <- assay(spatial.object.standr.normalized, "logcounts")
+standr.counts.list[["ruv_corrected"]] <- assay(spatial.object.standr.final, "logcounts")
+
+standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
+
+
+```
+
+### Export for DE Analysis
+
+```{r Export StandR counts for DE}
+
+# Export the inputs for DE Analysis
+saveRDS(spatial.object.standr.final, file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+
+
+
+```
+
+## Nanostring Default QC Pipeline
 
 Summary of QC for AOIs and Probes
 
@@ -497,7 +789,7 @@ print(nuclei.plot)
 
 ```{r Normalization, warning=FALSE, message=FALSE}
 
-q3.normalization.output <- geomxNorm(
+q3.normalization.output <- DSPWorkflow::geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "q3")
 
@@ -505,7 +797,7 @@ q3.normalization.output <- geomxNorm(
 pData(q3.normalization.output$object)$fixed_value_column <- "value"
     
     
-neg.normalization.output <- geomxNorm(
+neg.normalization.output <- DSPWorkflow::geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
 
@@ -568,16 +860,17 @@ if(export.norm.object == TRUE){
 
 ```
 
-#### RLE Plots
+#### RLE Plots for Nanostring Default
 
-```{r RLE Plots}
+```{r RLE Plots Default}
 #| warning: false
 #| message: false
 
 # Counts
-raw.counts <- q3.normalization.output$object@assayData$exprs
-q3.counts <- q3.normalization.output$object@assayData$q_norm
-neg.counts <- neg.normalization.output$object@assayData$neg_norm
+raw.log.counts <- log2(q3.normalization.output$object@assayData$exprs + 1)
+q3.log.counts <- log2(q3.normalization.output$object@assayData$q_norm + 1)
+neg.log.counts <- log2(neg.normalization.output$object@assayData$neg_norm + 1)
+quantile.log.counts <- log2(quantile.normalization.counts + 1)
 
 # Annotation
 annotation <- pData(q3.normalization.output$object)
@@ -588,22 +881,22 @@ annotation.facet <- "slide_name"
 # The ammount to subsample, with 1 being no subsampling
 subsample.ammount <- 0.2
 
-raw.rle <- make_rle_plot(counts = raw.counts, 
+raw.rle <- make_rle_plot(counts = raw.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
 
-q3.rle <- make_rle_plot(counts = q3.counts, 
+q3.rle <- make_rle_plot(counts = q3.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
 
-neg.rle <- make_rle_plot(counts = neg.counts, 
+neg.rle <- make_rle_plot(counts = neg.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
 
-quant.rle <- make_rle_plot(counts = quantile.normalization.counts, 
+quant.rle <- make_rle_plot(counts = quantile.log.counts, 
                          annotation = annotation, 
                          annotation.facet = annotation.facet, 
                          subsample.ammount = subsample.ammount)
@@ -616,78 +909,59 @@ print(quant.rle)
 
 
 
+
+
 ```
 
-#### **Example AOIs**
+#### RLE Plots for StandR
 
-```{r Normalization Effects on Counts, fig.width=12, fig.height=8}
-#| label: fig-NormEffects
-#| fig-cap: "Normalization Effects on Counts"
+```{r RLE Plots StandR}
 #| warning: false
 #| message: false
 
-# The raw counts boxplot
-transform1.raw<- exprs(q3.normalization.output$object[,1:30])
-transform2.raw<- as.data.frame(transform1.raw)
-transform3.raw<- melt(transform2.raw)
-ggboxplot.raw <- ggplot(transform3.raw, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="grey") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Raw") +
-  ggtitle("Neg Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# Counts
+prenorm.counts <- standr.counts.list$pre_norm
+norm.counts <- standr.counts.list$TMM_norm
+ruv.counts <- standr.counts.list$ruv_corrected
 
-# The Q3 normalized counts boxplot
-transform1.norm <- assayDataElement(q3.normalization.output$object[,1:30], elt = "q_norm")
-transform2.norm <- as.data.frame(transform1.norm)
-transform3.norm <- melt(transform2.norm)
-ggboxplot.q3norm <- ggplot(transform3.norm, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="cadetblue2") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Q3 Normalized") +
-  ggtitle("Q3 Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# Annotation
+annotation <- standr.aoi.annotation
 
-# The Negative normalized counts boxplot
-transform1.norm <- assayDataElement(neg.normalization.output$object[,1:30], elt = "neg_norm")
-transform2.norm <- as.data.frame(transform1.norm)
-transform3.norm <- melt(transform2.norm)
-ggboxplot.negnorm <- ggplot(transform3.norm, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="indianred") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Neg. Normalized") +
-  ggtitle("Neg Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# Annotation to groupo by
+annotation.facet <- "slide_name"
 
-# The Negative normalized counts boxplot
-transform1.norm <- quantile.normalization.counts[,1:30]
-transform2.norm <- melt(transform1.norm)
-ggboxplot.quantnorm <- ggplot(transform2.norm, aes(variable, value)) +
-  stat_boxplot(geom = "errorbar") +
-  geom_boxplot(fill="darkseagreen") +
-  scale_y_log10() +
-  xlab("Example AOIs") + 
-  ylab("Counts, Neg. Normalized") +
-  ggtitle("Neg Norm Counts") +
-  scale_x_discrete(labels=c(1:30))
+# The ammount to subsample, with 1 being no subsampling
+subsample.ammount <- 0.2
 
-print(ggboxplot.raw)
-print(ggboxplot.q3norm)
-print(ggboxplot.negnorm)
-print(ggboxplot.quantnorm)
+prenorm.rle <- make_rle_plot(counts = prenorm.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+norm.rle <- make_rle_plot(counts = norm.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+ruv.rle <- make_rle_plot(counts = ruv.counts, 
+                         annotation = annotation, 
+                         annotation.facet = annotation.facet, 
+                         subsample.ammount = subsample.ammount)
+
+
+print(prenorm.rle)
+print(norm.rle)
+print(ruv.rle)
+
+
+
 
 
 ```
 
-#### Principal Component Analysis (PCA)
+#### Principal Component Analysis (PCA) for Nanostring Default
 
-```{r PCA, warning=FALSE, message=FALSE}
+```{r PCA Default, warning=FALSE, message=FALSE}
 
 # See reference vignette: https://bioconductor.org/packages/release/bioc/vignettes/PCAtools/inst/doc/PCAtools.html#introduction
 
@@ -746,159 +1020,157 @@ quant.pca.table <- pca(quant.log.counts.df,
                  metadata = cleaned.annotation.df, 
                  removeVar = 0.1)
 
+default.pca.list <- list("q3" = q3.pca.table, 
+                         "neg" = neg.pca.table, 
+                         "quant" = quant.pca.table)
+
+```
+
+#### Principal Component Analysis (PCA) for StandR
+
+```{r PCA standr, warning=FALSE, message=FALSE}
+
+
+# Load the annotation (same for both normalization types)
+annotation <- standr.aoi.annotation
+
+# Generate a PCA table for all samples for both normalization types
+prenorm.pca.table <- pca(standr.counts.list$pre_norm, 
+                 metadata = annotation, 
+                 removeVar = 0.1)
+norm.pca.table <- pca(standr.counts.list$TMM_norm, 
+                 metadata = annotation, 
+                 removeVar = 0.1)
+ruv.pca.table <- pca(standr.counts.list$ruv_corrected, 
+                 metadata = annotation, 
+                 removeVar = 0.1)
+
+standr.pca.list <- list("prenorm" = prenorm.pca.table, 
+                        "norm" = norm.pca.table, 
+                        "ruv" = ruv.pca.table)
+
+
+
 ```
 
 #### PCA by Segment
 
-```{r PCA for Q3 segment, fig.width=12, fig.height=8}
-#| label: fig-PCAsegmentQ3
-#| fig-cap: "PCA colored by Segment for Q3 Normalization"
+```{r PCA for Segment, fig.width=12, fig.height=8}
+#| label: fig-PCAsegment
+#| fig-cap: "PCA colored by Segment"
 #| warning: false
 
-q3.pca.plot.segment <- biplot(q3.pca.table, 
-                         colby = "segment", 
-                         legendPosition = "right", 
-                         legendLabSize = 6, 
-                         legendIconSize = 3, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.segment <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "segment")
 
-print(q3.pca.plot.segment)
+standr.pca.segment <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "segment")
 
-```
-
-```{r PCA for Negative segment, fig.width=12, fig.height=8}
-#| label: fig-PCAsegmentNeg
-#| fig-cap: "PCA colored by Segment for Negative Normalization"
-#| warning: false
-
-neg.pca.plot.segment <- biplot(neg.pca.table, 
-                         colby = "segment", 
-                         legendPosition = "right", 
-                         legendLabSize = 6, 
-                         legendIconSize = 3, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
-
-print(neg.pca.plot.segment)
+print(default.pca.segment)
+print(standr.pca.segment)
 
 ```
 
 #### PCA by Region
 
-```{r PCA for Q3 region, fig.width=12, fig.height=8}
-#| label: fig-PCAregionQ3
-#| fig-cap: "PCA colored by Region for Q3 Normalization"
+```{r PCA for Region, fig.width=12, fig.height=8}
+#| label: fig-PCAregion
+#| fig-cap: "PCA colored by Region"
 #| warning: false
 
-q3.pca.plot.region <- biplot(q3.pca.table, 
-                         colby = "region", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.region <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "region")
 
-
-print(q3.pca.plot.region)
-
-```
-
-```{r PCA for Neg region, fig.width=12, fig.height=8}
-#| label: fig-PCAregionNeg
-#| fig-cap: "PCA colored by Region for Negative Normalization"
-#| warning: false
-
-neg.pca.plot.region <- biplot(neg.pca.table, 
-                         colby = "region", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
-
-print(neg.pca.plot.region)
-
+standr.pca.region <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "region")
+s
+print(default.pca.region)
+print(standr.pca.region)
 ```
 
 #### PCA by Class
 
-```{r PCA for Q3 class, fig.width=12, fig.height=8}
-#| label: fig-PCAclassQ3
-#| fig-cap: "PCA colored by Class for Q3 Normalization"
+```{r PCA for Class, fig.width=12, fig.height=8}
+#| label: fig-PCAclass
+#| fig-cap: "PCA colored by Class"
 #| warning: false
 
-q3.pca.plot.class <- biplot(q3.pca.table, 
-                         colby = "class", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.class <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "class")
 
-print(q3.pca.plot.class)
+standr.pca.class <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "class")
 
-```
-
-```{r PCA for Negative class, fig.width=12, fig.height=8}
-#| label: fig-PCAclassNeg
-#| fig-cap: "PCA colored by Class for Negative Normalization"
-#| warning: false
-
-neg.pca.plot.class <- biplot(neg.pca.table, 
-                         colby = "class", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
-
-print(neg.pca.plot.class)
+print(default.pca.class)
+print(standr.pca.class)
 
 ```
 
 #### PCA by Slide
 
-```{r PCA for Q3 slide, fig.width=12, fig.height=8}
-#| label: fig-PCAslideQ3
-#| fig-cap: "PCA colored by Slide for Q3 Normalization"
+```{r PCA for Slide, fig.width=12, fig.height=8}
+#| label: fig-PCAslide
+#| fig-cap: "PCA colored by Slide"
 #| warning: false
 
+default.pca.slide <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "slide_name")
 
-q3.pca.plot.slide <- biplot(q3.pca.table, 
-                         colby = "slide_name", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Q3 Normalization", 
-                         subtitle = "NTCs removed")
+standr.pca.slide <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "slide_name")
 
-print(q3.pca.plot.slide)
+print(default.pca.slide)
+print(standr.pca.slide)
 
 ```
 
-```{r PCA for Neg slide, fig.width=12, fig.height=8}
-#| label: fig-PCAslideNeg
-#| fig-cap: "PCA colored by Slide for Negative Normalization"
+#### PCA by Combined Annotations
+
+```{r PCA for Combined Annotations, fig.width=12, fig.height=8}
+#| label: fig-PCAcombined
+#| fig-cap: "PCA colored by Combined Annotations"
 #| warning: false
 
-neg.pca.plot.slide <- biplot(neg.pca.table, 
-                         colby = "slide_name", 
-                         legendPosition = "right", 
-                         legendLabSize = 10, 
-                         legendIconSize = 5, 
-                         lab = NULL,
-                         title = "Negative Normalization", 
-                         subtitle = "NTCs removed")
+default.pca.comb <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "combined_coll_annotations")
 
-print(neg.pca.plot.slide)
+standr.pca.comb <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "combined_coll_annotations")
+
+print(default.pca.comb)
+print(standr.pca.comb)
+```
+
+#### PCA by Pathology
+
+```{r PCA for Pathology, fig.width=12, fig.height=8}
+#| label: fig-PCApathology
+#| fig-cap: "PCA colored by Pathology"
+#| warning: false
+
+default.pca.path <- PCA_biplots(pca.table.list = default.pca.list, 
+                                   color.group = "pathology")
+
+standr.pca.path <- PCA_biplots(pca.table.list = standr.pca.list, 
+                                   color.group = "pathology")
+
+print(default.pca.path)
+print(standr.pca.path)
+
+```
+
+#### Compare Nanostring and StandR
+
+```{r}
+
+# Create a list of everything to compare
+comparison.pca.list <- list(Q3 = default.pca.list$q3,
+                            Quantile = default.pca.list$quant,
+                            RUV = standr.pca.list$ruv)
+
+comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list, 
+                              color.group = "combined_coll_annotations", 
+                              show.loadings = FALSE)
 
 ```
 
@@ -1020,9 +1292,6 @@ if(export){
 ```{r}
 # Set up pre and post normalization counts and convert to log
 
-pre.norm.counts <-
-  log(as.data.frame(q3.normalization.output$object@assayData$exprs), base = 2)
-
 post.q3norm.logcounts <- log(as.data.frame(q3.normalization.output$object@assayData$q_norm), base = 2)
 
 post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assayData$neg_norm), base = 2)
@@ -1030,7 +1299,7 @@ post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assa
 quantile.normalization.logcounts <- log(quantile.normalization.counts, base = 2)
 
 # Setup annotation groups for the ratio "M" (log A - log B)
-region.types <- c("DKD", "normal")
+region.types <- c("glomerulus", "tubule")
 
 # Define the name of the contrast
 contrast.name <- paste0(region.types[[1]], 
@@ -1038,14 +1307,17 @@ contrast.name <- paste0(region.types[[1]],
                         region.types[[2]])
 
 # Set up the annotations and raw counts for the MA plots
-contrast.field <- "class"
-condition.label <- "DKD"
-reference.label <- "normal"
-raw.log.counts <- pre.norm.counts
-annotation.MA <- annotation
+contrast.field <- "region"
+condition.label <- "glomerulus"
+reference.label <- "tubule"
+raw.log.counts <- log(as.data.frame(qc.output$object@assayData$exprs), base = 2)
+raw.log.counts.standr <- log(as.data.frame(qc.output.standr$object@assayData$exprs), base = 2)
+annotation.MA <- cleaned.annotation.df
 ```
 
 #### Q3 Normalization
+
+grid.draw(MA.plots.q3)
 
 ```{r MA Plot Q3, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
 # MA plots for two annotation groups to evaluate negative normalization
@@ -1096,6 +1368,57 @@ MA.plots.quant <- make_MA(contrast.field = contrast.field,
   
   
 grid.draw(MA.plots.quant)
+
+
+```
+
+### MA Plots for StandR
+
+```{r}
+# Set up pre and post normalization counts and convert to log
+ID.mapping <- setNames(rownames(standr.aoi.annotation), standr.aoi.annotation$SampleID)
+
+raw.log.counts.standr <- raw.log.counts.standr[, colnames(raw.log.counts.standr) %in% names(ID.mapping), 
+                                        drop = FALSE]
+
+# Rename remaining columns
+colnames(raw.log.counts.standr) <- ID.mapping[colnames(raw.log.counts.standr)]
+
+
+```
+
+#### StandR TMM Normalization
+
+```{r MA Plot TMM, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
+
+MA.plots.tmm <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = standr.counts.list$TMM_norm, 
+                    raw.log.counts = raw.log.counts.standr, 
+                    annotation = standr.aoi.annotation)
+  
+
+grid.draw(MA.plots.tmm)
+
+
+```
+
+#### StandR Ruv Correction
+
+```{r MA Plot RUV, message=FALSE, warning=FALSE, fig.width=12, fig.height=8}
+
+MA.plots.ruv <- make_MA(contrast.field = contrast.field, 
+                    condition.label = condition.label, 
+                    reference.label = reference.label, 
+                    log.counts = standr.counts.list$ruv_corrected, 
+                    raw.log.counts = raw.log.counts.standr, 
+                    annotation = standr.aoi.annotation)
+  
+  
+grid.draw(MA.plots.ruv)
+
+
 
 
 ```
