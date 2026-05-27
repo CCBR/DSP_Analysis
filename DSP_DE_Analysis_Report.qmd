@@ -31,12 +31,13 @@ library(readxl)
 library(gridExtra)
 library(grid)
 library(DSPWorkflow)
+library(standR)
+library(SpatialExperiment)
 
 # Source the helper functions
 source("DSP_functions.R")
 
-DE.results.folder <- paste0(params$results.folder, params$run.folder)
-DE.results.files <- list.files(DE.results.folder)
+de.results.files <- list.files(params$de.folder)
 ```
 
 ### Load the Normalized Counts and Annotation
@@ -1078,10 +1079,192 @@ if(export.decon.boxplots == TRUE){
 ```{r}
 
 # Load the StandR RUV object
-
 standr.ruv.object <- readRDS(file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
 
+# Convert to DGE for limma compatibility
+ruv.dge.object <- SE2DGEList(standr.ruv.object)
 
 
 
+```
+
+### Set up for Limma
+
+```{r}
+
+# The biological field to compare
+
+
+# Set up the design formula
+design <- model.matrix(~0 + combined_coll_annotations + ruv_W1 + ruv_W2 , data = colData(standr.ruv.object))
+
+colnames(design)
+colnames(design) <- gsub("^combined_coll_annotations","",colnames(design))
+colnames(design)
+
+contr.matrix <- makeContrasts(
+   Abnormal_v_Normal = glomerulus_abnormal_GeometricSegment - glomerulus_normal_GeometricSegment,
+   levels = colnames(design))
+
+# Filter genes by expression
+keep <- filterByExpr(ruv.dge.object, design)
+
+# Genes removed
+table(keep)
+rownames(ruv.dge.object)[!keep]
+
+# Remove low expression genes
+ruv.dge.object.gene.filter <- ruv.dge.object[keep, ]
+
+# Extimate Biological Coeff of Variation
+ruv.dge.object.gene.filter <- estimateDisp(ruv.dge.object.gene.filter, 
+                                           design = design, 
+                                           robust = TRUE)
+
+
+```
+
+#### BCV Plot
+
+```{r}
+
+
+bcv.df <- data.frame(
+  'BCV' = sqrt(ruv.dge.object.gene.filter$tagwise.dispersion),
+  'AveLogCPM' = ruv.dge.object.gene.filter$AveLogCPM,
+  'gene_id' = rownames(ruv.dge.object.gene.filter)
+)
+
+bcv.df$highBCV <- bcv.df$BCV > 0.8
+
+if (!is.null(ruv.dge.object.gene.filter$trended.dispersion)) {
+  bcv.df$trendedBCV <- sqrt(ruv.dge.object.gene.filter$trended.dispersion)
+}
+
+bcv.plot <- ggplot(bcv.df, aes(x = AveLogCPM, y = BCV)) +
+  geom_point(
+    aes(color = highBCV),
+    alpha = 0.6,
+    size = 1.5) +
+  geom_text_repel(
+    data = subset(bcv.df, highBCV),
+    aes(label = gene_id),
+    size = 3,
+    max.overlaps = Inf) +
+  scale_color_manual(
+    values = c("FALSE" = "black", "TRUE" = "red"),
+    labels = c("Other genes", "BCV > 0.8"),
+    name = NULL) +
+  coord_cartesian(ylim = c(0, 1.3)) +
+  labs(
+    x = "Average log CPM",
+    y = "Biological coefficient of variation",
+    title = "BCV plot") +
+  theme_classic() +
+  theme(
+    legend.position = c(0.02, 0.98),
+    legend.justification = c(0, 1))
+
+# Add trended BCV line, if available
+if ("trendedBCV" %in% colnames(bcv.df)) {
+  bcv.plot <- bcv.plot +
+    geom_line(
+      data = bcv.df[order(bcv.df$AveLogCPM), ],
+      aes(y = trendedBCV),
+      color = "blue",
+      linewidth = 1
+    )
+}
+
+# Add common BCV line, if available
+if (!is.null(ruv.dge.object.gene.filter$common.dispersion)) {
+  bcv.plot <- bcv.plot +
+    geom_hline(
+      yintercept = sqrt(ruv.dge.object.gene.filter$common.dispersion),
+      color = "blue",
+      linetype = "dashed",
+      linewidth = 0.8
+    )
+}
+
+
+
+```
+
+#### Run Limma Voom
+
+```{r}
+
+
+object.metadata <- as.data.frame(colData(standr.ruv.object))
+
+# Define the field which represents biological samples
+# Slide should be used in the case of 1 subject per slide, otherwise a patient or animal ID should be used
+block <- object.metadata$slide_name
+
+# Estimate mean-variance trend, first pass
+v0 <- voom(ruv.dge.object.gene.filter, 
+           design = design, 
+           plot = TRUE)
+
+# Estimate the within block correlation
+corfit1 <- duplicateCorrelation(
+  v0,
+  design = design,
+  block = block
+)
+
+# Correlation for first pass
+corfit1$consensus.correlation
+
+# Estimate mean variance trend now with first block correlation
+v <- voom(
+  ruv.dge.object.gene.filter,
+  design = design,
+  block = block,
+  correlation = corfit1$consensus.correlation,
+  plot = TRUE
+)
+
+# Estimate the block correlation again with the second pass mean variance trend
+corfit2 <- duplicateCorrelation(
+  v,
+  design = design,
+  block = block
+)
+
+# Correlation for second pass
+corfit2$consensus.correlation
+
+# Linear model for each gene
+fit <- lmFit(
+  v,
+  design = design,
+  block = block,
+  correlation = corfit2$consensus.correlation
+)
+
+
+fit_contrast <- contrasts.fit(
+  fit,
+  contrasts = contr.matrix
+)
+
+# Final 
+efit <- eBayes(
+  fit_contrast,
+  robust = TRUE
+)
+
+
+results <- topTable(efit, 
+                    number = Inf)
+
+results.simple <- results %>% 
+  select(mean_expr, logFC, adj.P.Val)
+
+
+results.simple.degs <- results.simple %>% 
+  filter(adj.P.Val < 0.05) %>% 
+  filter(logFC < -1 | logFC > 1)
 ```
