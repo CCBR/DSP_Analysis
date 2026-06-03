@@ -1053,11 +1053,7 @@ improved_make_volcano <- function(lmm.results,
   }
   
   
-  
-  # Make the volcano plot
-  
-  
-  return(list("volcano.plot" = volcano.plot))
+  return(volcano.plot)
   
 } 
 
