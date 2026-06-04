@@ -1032,7 +1032,7 @@ improved_make_volcano <- function(lmm.results,
       geom_point(size = 2) +
       scale_color_manual(legend.title, 
                          values = contrast.level.colors, 
-                         breaks = c("DOWN", "UP")) + 
+                         breaks = c("UP", "DOWN")) + 
       geom_text_repel(data = lmm.results.labeled,
                       aes(x = logfc, 
                           y = -log10(padj), 
