@@ -61,6 +61,8 @@ normalized.object <- readRDS(file = paste0(params$data.folder,
 }
 
 standardize_de_results <- function(results.df) {
+  
+  # Find the core fields in the DE results
   logfc.column <- grep("logFC", colnames(results.df), value = TRUE)
   pval.column <- grep("_pval", colnames(results.df), value = TRUE)
   adj.pval.column <- grep("adjpval", colnames(results.df), value = TRUE)
@@ -81,6 +83,7 @@ standardize_de_results <- function(results.df) {
          paste(adj.pval.column, collapse = ", "))
   }
 
+  # The final organized df 
   data.frame(
     gene = results.df$Gene,
     logfc = results.df[[logfc.column]],
@@ -90,6 +93,7 @@ standardize_de_results <- function(results.df) {
   )
 }
 
+# Check the previously saved de output
 validate_cached_results <- function(results.df, result.file) {
   required.cols <- c("gene", "logfc", "pval", "padj")
 
@@ -102,6 +106,8 @@ validate_cached_results <- function(results.df, result.file) {
     )
   }
 
+  
+  # Ensure proper formatting
   results.df <- results.df %>%
     dplyr::select(dplyr::all_of(required.cols))
 
@@ -112,6 +118,7 @@ validate_cached_results <- function(results.df, result.file) {
   results.df
 }
 
+# For labelling genes in the volcano plots with too many DEGs to label all
 get_top_gene_labels <- function(results.df,
                                 fc.limit = 1.5,
                                 padj.limit = 0.05,
@@ -131,6 +138,7 @@ get_top_gene_labels <- function(results.df,
     head(up$gene, n)
   ))
 }
+
 
 make_de_volcano <- function(results.df,
                             comp.params,
@@ -163,9 +171,11 @@ make_de_volcano <- function(results.df,
   )
 }
 
+
 run_de_comparison <- function(comp.params, normalized.object, params) {
   heading <- comp.params$heading %||% comp.params$contrast.name
-
+  
+  # For the summary of sample sizes per comparison group
   cat("\n\n#### ", heading, "\n\n", sep = "")
 
   lmm.input <- subset_object_for_lmm(
@@ -173,7 +183,7 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
     subset.group.1 = comp.params$subset.group.1,
     subset.group.2 = comp.params$subset.group.2
   )
-
+  
   summary.cols <- union(
     names(comp.params$subset.group.1),
     names(comp.params$subset.group.2)
@@ -196,6 +206,7 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
     paste0(comp.params$contrast.name, "_de.results.csv")
   )
 
+  # Check for previous de results
   if (file.exists(result.file) && !isTRUE(comp.params$overwrite.results %||% FALSE)) {
     results.df <- read.csv(
       result.file,
@@ -257,7 +268,8 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
     " down\n\n",
     sep = ""
   )
-
+  
+  # For labelling specific genes on the volcano plot
   custom.labels <- comp.params$custom.gene.labels %||% NULL
 
   if (isTRUE(comp.params$label.top.genes %||% FALSE)) {
@@ -279,6 +291,7 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
 
   print(volcano.plot)
 
+  # Useful for insrtances where there are many DEGs so labels will overlap and clutter plot
   volcano.plot.nolabel <- NULL
 
   if (
@@ -307,7 +320,8 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
     }
     
   }
-
+  
+  
   if (isTRUE(comp.params$export.volcano %||% FALSE)) {
     ggsave(
       filename = file.path(
@@ -340,13 +354,16 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
       height = comp.params$volcano.height %||% 10
     )
   }
-
+  
   gsea.preranked.df <- gsea_preranked_list(
     contrast.field = comp.params$gsea.contrast.field %||% comp.params$region.col,
     contrast.levels = comp.params$gsea.contrast.levels %||% comp.params$regions,
     annotation = lmm.input$subset.annotation,
     log.counts = lmm.input$subset.object@assayData$log_q
   )
+  
+  gsea.input.list <- list(preranked_df = gsea.preranked.df, 
+                        annotation_df = lmm.input$subset.annotation)
 
   if (isTRUE(comp.params$export.gsea.input %||% FALSE)) {
     gsea.dir <- file.path(params$data.folder, "gsea", "input_lists")
@@ -360,6 +377,15 @@ run_de_comparison <- function(comp.params, normalized.object, params) {
       ),
       row.names = FALSE
     )
+    
+    # Useful for accesing the AOIs for a comparison to create a pathway heatmap
+    saveRDS(gsea.input.list, 
+          file = file.path(
+            gsea.dir, 
+            paste0(comp.params$contrast.name, 
+                        "_gsea_input_list.RDS"))
+          )
+    
   }
 
   invisible(
