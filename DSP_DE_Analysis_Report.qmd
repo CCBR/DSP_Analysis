@@ -35,10 +35,9 @@ library(SpatialExperiment)
 # Source the helper functions
 source("DSP_functions.R")
 
-#de.results.files <- list.files(params$de.folder)
 ```
 
-### Load the Normalized Counts and Annotation
+### Load the all Input Counts and Annotation
 
 ```{r Load Normalized Counts}
 
@@ -46,370 +45,45 @@ normalized.object <- readRDS(file = paste0(params$data.folder,
                                                  params$dataset.name, 
                                                  "q3normalized_object.RDS"))
 
-
-```
-
-## Main DE Analysis Function
-
-```{r de-helper-functions}
-#| warning: false
-#| message: false
-
-# Use the left-hand value unless it is NULL; otherwise use the default on the right.
-`%||%` <- function(x, y) {
-  if (is.null(x)) y else x
-}
-
-standardize_de_results <- function(results.df) {
-  
-  # Find the core fields in the DE results
-  logfc.column <- grep("logFC", colnames(results.df), value = TRUE)
-  pval.column <- grep("_pval", colnames(results.df), value = TRUE)
-  adj.pval.column <- grep("adjpval", colnames(results.df), value = TRUE)
-  
-  # Checks
-  if (length(logfc.column) != 1) {
-    stop("Expected exactly one logFC column, found: ",
-         paste(logfc.column, collapse = ", "))
-  }
-
-  if (length(pval.column) != 1) {
-    stop("Expected exactly one _pval column, found: ",
-         paste(pval.column, collapse = ", "))
-  }
-
-  if (length(adj.pval.column) != 1) {
-    stop("Expected exactly one adjpval column, found: ",
-         paste(adj.pval.column, collapse = ", "))
-  }
-
-  # The final organized df 
-  data.frame(
-    gene = results.df$Gene,
-    logfc = results.df[[logfc.column]],
-    pval = results.df[[pval.column]],
-    padj = results.df[[adj.pval.column]],
-    stringsAsFactors = FALSE
-  )
-}
-
-# Check the previously saved de output
-validate_cached_results <- function(results.df, result.file) {
-  required.cols <- c("gene", "logfc", "pval", "padj")
-
-  if (!all(required.cols %in% colnames(results.df))) {
-    stop(
-      "Cached DE result file does not contain the expected columns: ",
-      result.file,
-      "\nExpected columns: ",
-      paste(required.cols, collapse = ", ")
-    )
-  }
-
-  
-  # Ensure proper formatting
-  results.df <- results.df %>%
-    dplyr::select(dplyr::all_of(required.cols))
-
-  results.df$logfc <- as.numeric(results.df$logfc)
-  results.df$pval <- as.numeric(results.df$pval)
-  results.df$padj <- as.numeric(results.df$padj)
-
-  results.df
-}
-
-# For labelling genes in the volcano plots with too many DEGs to label all
-get_top_gene_labels <- function(results.df,
-                                fc.limit = 1.5,
-                                padj.limit = 0.05,
-                                n = 10) {
-  down <- results.df %>%
-    filter(!is.na(logfc), !is.na(padj)) %>%
-    filter(logfc < -fc.limit, padj < padj.limit) %>%
-    arrange(padj, logfc)
-
-  up <- results.df %>%
-    filter(!is.na(logfc), !is.na(padj)) %>%
-    filter(logfc > fc.limit, padj < padj.limit) %>%
-    arrange(padj, desc(logfc))
-
-  unique(c(
-    head(down$gene, n),
-    head(up$gene, n)
-  ))
-}
+# Load the StandR RUV object
+standr.ruv.object <- readRDS(file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
 
 
-make_de_volcano <- function(results.df,
-                            comp.params,
-                            custom.labels = NULL,
-                            remove.all.gene.labels = FALSE,
-                            label.size = NULL) {
-  improved_make_volcano(
-    lmm.results = results.df,
-    title = comp.params$volcano.title %||% comp.params$heading %||% comp.params$contrast.name,
-    title.size = comp.params$title.size %||% 22,
-    legend.title = comp.params$legend.title %||% "Expression",
-    fc.limit = comp.params$fc.limit %||% 1.5,
-    custom.gene.labels = custom.labels,
-    remove.controls = comp.params$remove.controls %||% FALSE,
-    remove.genes = comp.params$remove.genes %||% NULL,
-    remove.all.gene.labels = remove.all.gene.labels,
-    legend.coordinates = comp.params$legend.coordinates %||% c(.99, .1),
-    x.lab = comp.params$x.lab %||% "Log2 Fold Change",
-    y.lab = comp.params$y.lab %||% "-Log10 adjusted p-value",
-    dotted.line.color = comp.params$dotted.line.color %||% "black",
-    alpha = comp.params$alpha %||% 1,
-    nonDE.color = comp.params$nonDE.color %||% "gray60",
-    upDE.color = comp.params$upDE.color %||% "red",
-    downDE.color = comp.params$downDE.color %||% "blue",
-    label.size = label.size %||% comp.params$label.size %||% 8,
-    label.color = comp.params$label.color %||% "black",
-    axis.tick.label.size = comp.params$axis.tick.label.size %||% 20,
-    legend.text.size = comp.params$legend.text.size %||% 20,
-    axis.title.size = comp.params$axis.title.size %||% 20
-  )
-}
 
-
-run_de_comparison <- function(comp.params, normalized.object, params) {
-  heading <- comp.params$heading %||% comp.params$contrast.name
-  
-  # For the summary of sample sizes per comparison group
-  cat("\n\n#### ", heading, "\n\n", sep = "")
-
-  lmm.input <- subset_object_for_lmm(
-    object = normalized.object,
-    subset.group.1 = comp.params$subset.group.1,
-    subset.group.2 = comp.params$subset.group.2
-  )
-  
-  summary.cols <- union(
-    names(comp.params$subset.group.1),
-    names(comp.params$subset.group.2)
-  )
-
-  summary.table.df <- pData(lmm.input$subset.object) %>%
-    dplyr::select(dplyr::all_of(summary.cols))
-
-  summary.table <- as.data.frame(
-    table(summary.table.df),
-    stringsAsFactors = FALSE
-  )
-
-  cat("**Sample numbers per annotation group**\n\n")
-  cat(knitr::kable(summary.table), sep = "\n")
-  cat("\n\n")
-
-  result.file <- file.path(
-    params$de.folder,
-    paste0(comp.params$contrast.name, "_de.results.csv")
-  )
-
-  # Check for previous de results
-  if (file.exists(result.file) && !isTRUE(comp.params$overwrite.results %||% FALSE)) {
-    results.df <- read.csv(
-      result.file,
-      stringsAsFactors = FALSE,
-      check.names = FALSE
-    )
-
-    results.df <- validate_cached_results(results.df, result.file)
-
-    cat("*Loaded existing DE results.*\n\n")
-  } else {
-    results.list <- diffExpr(
-      object = lmm.input$subset.object,
-      analysis.type = comp.params$analysis.type %||% "Within Groups",
-      region.col = comp.params$region.col,
-      regions = comp.params$regions,
-      group.col = comp.params$group.col,
-      groups = comp.params$groups,
-      n.cores = comp.params$n.cores %||% parallel::detectCores()
-    )
-
-    results.df <- standardize_de_results(results.list$results)
-
-    if (isTRUE(comp.params$write.results %||% TRUE)) {
-      dir.create(params$de.folder, showWarnings = FALSE, recursive = TRUE)
-
-      write.csv(
-        results.df,
-        result.file,
-        row.names = FALSE
-      )
-
-      cat("*Wrote DE results to disk.*\n\n")
-    }
-  }
-
-  fc.limit <- comp.params$fc.limit %||% 1.5
-  padj.limit <- comp.params$padj.limit %||% 0.05
-
-  total.down.reg.degs <- sum(
-    results.df$logfc < -fc.limit & results.df$padj < padj.limit,
-    na.rm = TRUE
-  )
-
-  total.up.reg.degs <- sum(
-    results.df$logfc > fc.limit & results.df$padj < padj.limit,
-    na.rm = TRUE
-  )
-
-  cat(
-    "**DEGs at |log2FC| > ",
-    fc.limit,
-    " and padj < ",
-    padj.limit,
-    ":** ",
-    total.up.reg.degs,
-    " up, ",
-    total.down.reg.degs,
-    " down\n\n",
-    sep = ""
-  )
-  
-  # For labelling specific genes on the volcano plot
-  custom.labels <- comp.params$custom.gene.labels %||% NULL
-
-  if (isTRUE(comp.params$label.top.genes %||% FALSE)) {
-    custom.labels <- get_top_gene_labels(
-      results.df = results.df,
-      fc.limit = fc.limit,
-      padj.limit = padj.limit,
-      n = comp.params$n.labels %||% 10
-    )
-  }
-
-  volcano.plot <- make_de_volcano(
-    results.df = results.df,
-    comp.params = comp.params,
-    custom.labels = custom.labels,
-    remove.all.gene.labels = comp.params$remove.all.gene.labels %||% FALSE,
-    label.size = comp.params$label.size %||% 8
-  )
-
-  print(volcano.plot)
-
-  # Useful for insrtances where there are many DEGs so labels will overlap and clutter plot
-  volcano.plot.nolabel <- NULL
-
-  if (
-    isTRUE(comp.params$make.nolabel.volcano %||% FALSE) ||
-    isTRUE(comp.params$export.volcano.nolabel %||% FALSE)
-  ) {
-    volcano.plot.nolabel <- make_de_volcano(
-      results.df = results.df,
-      comp.params = comp.params,
-      custom.labels = NULL,
-      remove.all.gene.labels = TRUE,
-      label.size = comp.params$nolabel.label.size %||% 4
-    )
-  }
-  
-  # Create a directory for the volcano plots
-  if (
-    isTRUE(comp.params$export.volcano %||% FALSE) ||
-    isTRUE(comp.params$export.volcano.nolabel %||% FALSE)
-  ) {
-    volcano.dir <- file.path(params$de.folder, "volcano")
-    
-    if(!dir.exists(volcano.dir)){
-      dir.create(volcano.dir, showWarnings = FALSE, recursive = TRUE)
-      print(paste0("Created volcano directory at: ", volcano.dir))
-    }
-    
-  }
-  
-  
-  if (isTRUE(comp.params$export.volcano %||% FALSE)) {
-    ggsave(
-      filename = file.path(
-        params$de.folder,
-        "volcano",
-        paste0(comp.params$contrast.name, "_volcano_plot.png")
-      ),
-      plot = volcano.plot,
-      width = comp.params$volcano.width %||% 14,
-      height = comp.params$volcano.height %||% 10
-    )
-    
-    print(paste0("Volcano plot saved to: ", 
-                 file.path(params$de.folder, "volcano",
-                           paste0(comp.params$contrast.name, 
-                                  "_volcano_plot.png")))
-          )
-    
-  }
-
-  if (isTRUE(comp.params$export.volcano.nolabel %||% FALSE)) {
-    ggsave(
-      filename = file.path(
-        params$de.folder,
-        "volcano",
-        paste0(comp.params$contrast.name, "_volcano_plot_nolabel.png")
-      ),
-      plot = volcano.plot.nolabel,
-      width = comp.params$volcano.width %||% 14,
-      height = comp.params$volcano.height %||% 10
-    )
-  }
-  
-  gsea.preranked.df <- gsea_preranked_list(
-    contrast.field = comp.params$gsea.contrast.field %||% comp.params$region.col,
-    contrast.levels = comp.params$gsea.contrast.levels %||% comp.params$regions,
-    annotation = lmm.input$subset.annotation,
-    log.counts = lmm.input$subset.object@assayData$log_q
-  )
-  
-  gsea.input.list <- list(preranked_df = gsea.preranked.df, 
-                        annotation_df = lmm.input$subset.annotation)
-
-  if (isTRUE(comp.params$export.gsea.input %||% FALSE)) {
-    gsea.dir <- file.path(params$data.folder, "gsea", "input_lists")
-    dir.create(gsea.dir, showWarnings = FALSE, recursive = TRUE)
-
-    write.csv(
-      gsea.preranked.df,
-      file = file.path(
-        gsea.dir,
-        paste0(comp.params$contrast.name, "_gsea_preranked_input.csv")
-      ),
-      row.names = FALSE
-    )
-    
-    # Useful for accesing the AOIs for a comparison to create a pathway heatmap
-    saveRDS(gsea.input.list, 
-          file = file.path(
-            gsea.dir, 
-            paste0(comp.params$contrast.name, 
-                        "_gsea_input_list.RDS"))
-          )
-    
-  }
-
-  invisible(
-    list(
-      contrast.name = comp.params$contrast.name,
-      summary.table = summary.table,
-      results = results.df,
-      gsea.preranked = gsea.preranked.df
-    )
-  )
-}
 ```
 
 ## Comparison Parameters
 
-```{r de-comparison-config}
-#| warning: false
-#| message: false
-
-
+```{r}
 # Parameters shared across all comparisons
 common.comparison.parameters <- list(
   
-  # Volcano Parameters
+  # DE methods to run.
+  # Options:
+  #   de.method = "default"
+  #   de.method = "standr"
+  #   de.method = c("default", "standr")
+  #
+  # When both are supplied, the functions run them in this order:
+  #   default, then standr
+  de.method = c("default", "standr"),
+  
+  # StandR defaults shared across comparisons
+  standr = list(
+    object.name = "standr.ruv.object",
+    covariates = c("ruv_W1", "ruv_W2"),
+    block.field = "slide_name",
+    filter.by.expr = TRUE,
+    estimate.disp.robust = TRUE,
+    ebayes.robust = TRUE,
+    plot.voom = FALSE,
+    sort.by = "P",
+    clean.design.names = TRUE,
+    print.design.columns = TRUE, 
+    remove.batch.for.gsea = FALSE
+  ),
+  
+  # Volcano parameters
   fc.limit = 1,
   padj.limit = 0.05,
   n.labels = 10,
@@ -444,15 +118,17 @@ common.comparison.parameters <- list(
   export.gsea.input = TRUE
 )
 
-# Individual Comparisons with unique parameters
+
+# Individual comparisons with unique parameters
 de.comparisons <- list(
   
-  # Add unique paramaters for each comparison
   modifyList(
     common.comparison.parameters,
     list(
       contrast.name = "DKD_Tubule_panck_pos_vs_neg",
       heading = "DKD Tubule PanCK Pos vs. Neg",
+      
+      overwrite.results = FALSE,
 
       subset.group.1 = list(
         class = c("DKD"),
@@ -466,25 +142,31 @@ de.comparisons <- list(
         segment = c("PanCK_neg")
       ),
 
-      # DE function
+      # Default DSPWorkflow diffExpr parameters
       analysis.type = "Within Groups",
       region.col = "segment",
       regions = c("PanCK_pos", "PanCK_neg"),
       group.col = "region",
       groups = c("tubule"),
       legend.title = "Expression in PanCK+",
-
-      # Volcano Plot
+      
+      # StandR parameters unique to this comparison
+      standr = list(
+        design.annotation = "segment",
+        contrast.numerator = "PanCK_pos",
+        contrast.denominator = "PanCK_neg"
+      ), 
+      
+      # Volcano plot
       volcano.title = "DKD Tubule - PanCK Pos vs. Neg",
       label.top.genes = FALSE, 
       
       # GSEA
       gsea.contrast.field = "segment",
       gsea.contrast.levels = c("PanCK_pos", "PanCK_neg")
-
     )
   ), 
-  # Add unique paramaters for each comparison
+
   modifyList(
     common.comparison.parameters,
     list(
@@ -501,995 +183,86 @@ de.comparisons <- list(
         region = c("glomerulus")
       ),
 
-      # DE function
+      # Default DSPWorkflow diffExpr parameters
       analysis.type = "Between Groups",
       region.col = "region",
       regions = c("glomerulus"),
       group.col = "class",
       groups = c("DKD", "normal"),
       legend.title = "Expression in DKD",
+      
+      # StandR parameters unique to this comparison
+      # For DKD vs normal, the design annotation should be class.
+      standr = list(
+        design.annotation = "class",
+        contrast.numerator = "DKD",
+        contrast.denominator = "normal"
+      ), 
 
-      # Volcano Plot
+      # Volcano plot
       volcano.title = "Glomerulus DKD vs. Normal",
       label.top.genes = FALSE, 
       
       # GSEA
       gsea.contrast.field = "class",
       gsea.contrast.levels = c("DKD", "normal")
-
     )
   ),
   
   modifyList(
     common.comparison.parameters,
     list(
-      contrast.name = "DKD Glomerulus_vs_Tubule",
+      contrast.name = "DKD_Glomerulus_vs_Tubule",
       heading = "DKD Glomerulus vs Tubule",
 
       subset.group.1 = list(
         class = c("DKD"), 
-        region = c("glomerulus", 
-                   "tubule")
+        region = c("glomerulus", "tubule")
       ),
 
       subset.group.2 = list(
         class = c("DKD"), 
-        region = c("glomerulus", 
-                   "tubule")
+        region = c("glomerulus", "tubule")
       ),
 
-      # DE function
+      # Default DSPWorkflow diffExpr parameters
       analysis.type = "Within Groups",
       region.col = "region",
       regions = c("glomerulus", "tubule"),
       group.col = "class",
       groups = c("DKD"),
       legend.title = "Expression in Glomerulus",
+      
+      # StandR parameters unique to this comparison
+      # For glomerulus vs tubule, the design annotation should be region.
+      standr = list(
+        design.annotation = "region",
+        contrast.numerator = "glomerulus",
+        contrast.denominator = "tubule"
+      ), 
 
-      # Volcano Plot
+      # Volcano plot
       volcano.title = "DKD Glomerulus vs. Tubule",
       label.top.genes = FALSE, 
       
       # GSEA
       gsea.contrast.field = "region",
       gsea.contrast.levels = c("glomerulus", "tubule")
-
     )
   )
-  
-  
-
 )
 
-```
-
-#### Run Comparisons
-
-```{r run-de-comparisons}
-#| warning: false
-#| message: false
-#| results: asis
-#| fig-width: 14
-#| fig-height: 10
-
-de.outputs <- stats::setNames(
-  vector("list", length(de.comparisons)),
-  vapply(de.comparisons, function(x) x$contrast.name, character(1))
-)
-
-for (i in seq_along(de.comparisons)) {
-  de.outputs[[i]] <- run_de_comparison(
-    comp.params = de.comparisons[[i]],
-    normalized.object = normalized.object,
-    params = params
-  )
-}
-
 
 ```
 
-### Set up the Annotation Colors
-
-```{r Annotation Colors}
-
-# Set up annotation colors for the heatmaps
-anno.colors = list(
-      segment = c(GeometricSegment = "slateblue", 
-                PanCK_pos = "coral", 
-                PanCK_neg = "seagreen1"), 
-      region = c(glomerulus = "red", 
-                 tubule = "blue"), 
-      class = c(DKD = "purple", 
-                normal = "yellow"), 
-      pathology = c(normal = "orange", 
-                    abnormal = "green", 
-                    "NA" = "gray")
-      )
-```
-
-### Run DE
-
-#### DKD vs. normal
-
-```{r}
-#| warning: false
-#| message: false
-
-# Name for the contrast 
-contrast.name <- "Original_DKD_Tubule_PanCK_Pos_vs_Neg"
-
-subset.group.1 <- list(class = c("DKD"))
-
-subset.group.2 <- list(class = c("normal"))
-
-lmm.input <- subset_object_for_lmm(object = normalized.object, 
-                      subset.group.1 = subset.group.1, 
-                      subset.group.2 = subset.group.2)
-
-
-# Create summary table of group counts
-summary.table.df <- pData(lmm.input$subset.object) %>%  
-  select(c(names(subset.group.1)))
-
-summary.table <- table(summary.table.df)
-
-print("Sample Numbers per Annotation Group")
-print("-----------------------------------")
-print(summary.table)
-
-# Check if the DE results have already been generated
-DE.result.file <- grepl(contrast.name, DE.results.files)
-if(sum(DE.result.file) == 1) {
-  
-  # Load the previously generated DE results
-  results.df <- as.data.frame(read.csv(paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv")))
-                              
-} else {
-  # Use the function from the DSPWorkflow package
-
-  # Within slide analysis
-  # Listed contrasts are condition, reference 
-  results.list <- diffExpr(object = lmm.input$subset.object, 
-                        analysis.type = "Between Groups", 
-                        region.col = "fixed_value_column", 
-                        regions = c("value"), 
-                        group.col = "class", 
-                        groups = c("DKD", "normal"), 
-                        n.cores = parallel::detectCores())
-  
-  # Create the results df
-  results.df <- results.list$results
-  
-  # Adjust column names
-  logfc.column <- colnames(results.df[grepl("logFC",colnames(results.df))])
-  results.df$logfc <- results.df[[logfc.column]]
-  
-  pval.column <- colnames(results.df[grepl("_pval",colnames(results.df))])
-  results.df$pval <- results.df[[pval.column]]
-  
-  adj.pval.column <- colnames(results.df[grepl("adjpval",colnames(results.df))])
-  results.df$padj <- results.df[[adj.pval.column]]
-  
-  results.df$gene <- results.df$Gene
-  
-  # Keep only the necessary columns
-  results.df <- results.df %>% select(c("gene", 
-                                        "logfc", 
-                                        "pval", 
-                                        "padj"))
-  
-  write.results <- FALSE
-  if(write.results == TRUE){
-    write.csv(results.df, paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv"))
-    
-    saveRDS(results.df, paste0(params$data.folder, 
-                              params$results.folder, 
-                              contrast.name, "_de_results.RDS"))
-    
-  }
-  
-  
-}
-
-
-
-
-# Export the results
-export.deg.list <- FALSE
-if(export.deg.list == TRUE){ 
-  write.csv(results.df, 
-            file = paste0(results.folder, run.folder, "DE/DEG_lists/", contrast.name, "_deg_list.csv"), 
-            row.names = FALSE)  
-}
-
-# Make the volcano plot
-volcano.output <- make_volcano(lmm.results = results.df, 
-                               title = contrast.name, 
-                               legend.title = "Expression in DKD", 
-                               x.axis.title = "logFC", 
-                               fc.limit = 1.5, 
-                               pos.label.limit = 1.5, 
-                               neg.label.limit = -1.5)
-
-# Export the volcano
-export.volcano <- FALSE
-if(export.volcano == TRUE){ 
-  ggsave(filename = paste0(results.folder, run.folder, "DE/volcano/", contrast.name, "_volcano_plot.png"), 
-         width = 14, 
-         height = 10)
-}
-
-print(volcano.output$volcano.plot)
-
-# Subset the annotation just for the heatmap annotations of interest
-#annotation.heatmap <- lmm.input$annotation %>% 
-#  select(names(anno.colors)) %>% 
-#  arrange(Treatment_group)
-#
-#heatmap.plot <- make_heatmap(
-#  normalized.log.counts.df = lmm.input$log.counts, 
-#  de.results = results.df, 
-#  top.degs = TRUE, 
-#  annotation.column = annotation.heatmap,
-#  annotation.row = NULL, 
-#  anno.colors = anno.colors, 
-#  cluster.rows = TRUE, 
-#  cluster.columns = TRUE, 
-#  main.title = contrast.name, 
-#  row.gaps = NULL, 
-#  column.gaps = NULL, 
-#  show.colnames = FALSE, 
-#  show.rownames = TRUE)
-#
-#print(heatmap.plot)
-
-#export.heatmap <- FALSE
-#if(export.heatmap == TRUE){
-#  
-#  ggsave(heatmap.plot, 
-#         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot#.png"), 
-#         width = 14, 
-#         height = 10)
-#  
-#}
-#
-## GSEA Preranked List
-#
-#gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
-#                                         contrast.levels = contrast.groups, 
-#                                         annotation = lmm.input$annotation,
-#                                         log.counts = lmm.input$log.counts)
-#
-#export.gsea.input <- FALSE
-#if(export.gsea.input == TRUE){
-#  
-#  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, #"_gsea_preranked_input.csv"), row.names = FALSE)
-#  
-#}
-
-```
-
-#### DKD - Glomerulus vs. Tubule
-
-```{r}
-#| warning: false
-#| message: false
-
-# Name for the contrast 
-contrast.name <- "DKD_glomerulus_vs_tubule"
-
-subset.group.1 <- list(class = c("DKD"), 
-                       region = c("glomerulus"))
-
-subset.group.2 <- list(class = c("DKD"), 
-                       region = c("tubule"))
-
-lmm.input <- subset_object_for_lmm(object = normalized.object, 
-                      subset.group.1 = subset.group.1, 
-                      subset.group.2 = subset.group.2)
-
-
-# Create summary table of group counts
-summary.table.df <- pData(lmm.input$subset.object) %>%  
-  select(c(names(subset.group.1)))
-
-summary.table <- table(summary.table.df)
-
-print("Sample Numbers per Annotation Group")
-print("-----------------------------------")
-print(summary.table)
-
-# Check if the DE results have already been generated
-DE.result.file <- grepl(contrast.name, DE.results.files)
-if(sum(DE.result.file) == 1) {
-  
-  # Load the previously generated DE results
-  results.df <- as.data.frame(read.csv(paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv")))
-                              
-} else {
-  # Use the function from the DSPWorkflow package
-
-  # Within slide analysis
-  # Listed contrasts are condition, reference 
-  results.list <- diffExpr(object = lmm.input$subset.object, 
-                        analysis.type = "Within Groups", 
-                        region.col = "region", 
-                        regions = c("glomerulus", "tubule"), 
-                        group.col = "class", 
-                        groups = c("DKD"), 
-                        n.cores = parallel::detectCores())
-  
-  # Create the results df
-  results.df <- results.list$results
-  
-  write.results <- FALSE
-  if(write.results == TRUE){
-    write.csv(results.df, paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv"))
-    
-    saveRDS(results.df, paste0(params$data.folder, 
-                              params$results.folder, 
-                              contrast.name, "_de_results.RDS"))
-    
-  }
-  
-  
-}
-
-# Adjust column names
-logfc.column <- colnames(results.df[grepl("logFC",colnames(results.df))])
-results.df$logfc <- results.df[[logfc.column]]
-
-pval.column <- colnames(results.df[grepl("_pval",colnames(results.df))])
-results.df$pval <- results.df[[pval.column]]
-
-adj.pval.column <- colnames(results.df[grepl("adjpval",colnames(results.df))])
-results.df$padj <- results.df[[adj.pval.column]]
-
-results.df$gene <- results.df$Gene
-
-# Keep only the necessary columns
-results.df <- results.df %>% select(c("gene", 
-                                      "logfc", 
-                                      "pval", 
-                                      "padj"))
-
-
-# Export the results
-export.deg.list <- FALSE
-if(export.deg.list == TRUE){ 
-  write.csv(results.df, 
-            file = paste0(results.folder, run.folder, "DE/DEG_lists/", contrast.name, "_deg_list.csv"), 
-            row.names = FALSE)  
-}
-
-# Make the volcano plot
-volcano.output <- make_volcano(lmm.results = results.df, 
-                               title = contrast.name, 
-                               legend.title = "Expression in glomerulus", 
-                               x.axis.title = "logFC", 
-                               fc.limit = 1, 
-                               pos.label.limit = 1.5, 
-                               neg.label.limit = -1.5)
-
-# Export the volcano
-export.volcano <- FALSE
-if(export.volcano == TRUE){ 
-  ggsave(filename = paste0(results.folder, run.folder, "DE/volcano/", contrast.name, "_volcano_plot.png"), 
-         width = 14, 
-         height = 10)
-}
-
-print(volcano.output$volcano.plot)
-
-# Subset the annotation just for the heatmap annotations of interest
-#annotation.heatmap <- lmm.input$annotation %>% 
-#  select(names(anno.colors)) %>% 
-#  arrange(Treatment_group)
-#
-#heatmap.plot <- make_heatmap(
-#  normalized.log.counts.df = lmm.input$log.counts, 
-#  de.results = results.df, 
-#  top.degs = TRUE, 
-#  annotation.column = annotation.heatmap,
-#  annotation.row = NULL, 
-#  anno.colors = anno.colors, 
-#  cluster.rows = TRUE, 
-#  cluster.columns = TRUE, 
-#  main.title = contrast.name, 
-#  row.gaps = NULL, 
-#  column.gaps = NULL, 
-#  show.colnames = FALSE, 
-#  show.rownames = TRUE)
-#
-#print(heatmap.plot)
-
-#export.heatmap <- FALSE
-#if(export.heatmap == TRUE){
-#  
-#  ggsave(heatmap.plot, 
-#         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot#.png"), 
-#         width = 14, 
-#         height = 10)
-#  
-#}
-#
-## GSEA Preranked List
-#
-#gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
-#                                         contrast.levels = contrast.groups, 
-#                                         annotation = lmm.input$annotation,
-#                                         log.counts = lmm.input$log.counts)
-#
-#export.gsea.input <- FALSE
-#if(export.gsea.input == TRUE){
-#  
-#  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, #"_gsea_preranked_input.csv"), row.names = FALSE)
-#  
-#}
-
-
-```
-
-#### DKD - Tubule - PanCK Pos vs. Neg
+## Updated Run Comparisons
 
 ```{r}
 
-#| warning: false
-#| message: false
-
-# Name for the contrast 
-contrast.name <- "DKD_glomerulus_vs_tubule"
-
-subset.group.1 <- list(class = c("DKD"), 
-                       region = c("tubule"), 
-                       segment = c("PanCK_pos"))
-
-subset.group.2 <- list(class = c("DKD"), 
-                       region = c("tubule"), 
-                       segment = c("PanCK_neg"))
-
-lmm.input <- subset_object_for_lmm(object = normalized.object, 
-                      subset.group.1 = subset.group.1, 
-                      subset.group.2 = subset.group.2)
-
-
-# Create summary table of group counts
-summary.table.df <- pData(lmm.input$subset.object) %>%  
-  select(c(names(subset.group.1)))
-
-summary.table <- table(summary.table.df)
-
-print("Sample Numbers per Annotation Group")
-print("-----------------------------------")
-print(summary.table)
-
-# Check if the DE results have already been generated
-DE.result.file <- grepl(contrast.name, DE.results.files)
-if(sum(DE.result.file) == 1) {
-  
-  # Load the previously generated DE results
-  results.df <- as.data.frame(read.csv(paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv")))
-                              
-} else {
-  # Use the function from the DSPWorkflow package
-
-  # Within slide analysis
-  # Listed contrasts are condition, reference 
-  results.list <- diffExpr(object = lmm.input$subset.object, 
-                        analysis.type = "Within Groups", 
-                        region.col = "segment", 
-                        regions = c("PanCK_pos", "PanCK_neg"), 
-                        group.col = "class", 
-                        groups = c("DKD"), 
-                        n.cores = parallel::detectCores())
-  
-  # Create the results df
-  results.df <- results.list$results
-  
-  write.results <- FALSE
-  if(write.results == TRUE){
-    write.csv(results.df, paste0(params$data.folder, params$results.folder, contrast.name, "_de_results.csv"))
-    
-    saveRDS(results.df, paste0(params$data.folder, 
-                              params$results.folder, 
-                              contrast.name, "_de_results.RDS"))
-    
-  }
-  
-  
-}
-
-# Adjust column names
-logfc.column <- colnames(results.df[grepl("logFC",colnames(results.df))])
-results.df$logfc <- results.df[[logfc.column]]
-
-pval.column <- colnames(results.df[grepl("_pval",colnames(results.df))])
-results.df$pval <- results.df[[pval.column]]
-
-adj.pval.column <- colnames(results.df[grepl("adjpval",colnames(results.df))])
-results.df$padj <- results.df[[adj.pval.column]]
-
-results.df$gene <- results.df$Gene
-
-# Keep only the necessary columns
-results.df <- results.df %>% select(c("gene", 
-                                      "logfc", 
-                                      "pval", 
-                                      "padj"))
-
-
-# Export the results
-export.deg.list <- FALSE
-if(export.deg.list == TRUE){ 
-  write.csv(results.df, 
-            file = paste0(results.folder, run.folder, "DE/DEG_lists/", contrast.name, "_deg_list.csv"), 
-            row.names = FALSE)  
-}
-
-# Make the volcano plot
-volcano.output <- make_volcano(lmm.results = results.df, 
-                               title = contrast.name, 
-                               legend.title = "Expression in PanCK Positive", 
-                               x.axis.title = "logFC", 
-                               fc.limit = 1, 
-                               pos.label.limit = 1.5, 
-                               neg.label.limit = -1.5)
-
-# Export the volcano
-export.volcano <- FALSE
-if(export.volcano == TRUE){ 
-  ggsave(filename = paste0(results.folder, run.folder, "DE/volcano/", contrast.name, "_volcano_plot.png"), 
-         width = 14, 
-         height = 10)
-}
-
-print(volcano.output$volcano.plot)
-
-# Subset the annotation just for the heatmap annotations of interest
-#annotation.heatmap <- lmm.input$annotation %>% 
-#  select(names(anno.colors)) %>% 
-#  arrange(Treatment_group)
-#
-#heatmap.plot <- make_heatmap(
-#  normalized.log.counts.df = lmm.input$log.counts, 
-#  de.results = results.df, 
-#  top.degs = TRUE, 
-#  annotation.column = annotation.heatmap,
-#  annotation.row = NULL, 
-#  anno.colors = anno.colors, 
-#  cluster.rows = TRUE, 
-#  cluster.columns = TRUE, 
-#  main.title = contrast.name, 
-#  row.gaps = NULL, 
-#  column.gaps = NULL, 
-#  show.colnames = FALSE, 
-#  show.rownames = TRUE)
-#
-#print(heatmap.plot)
-
-#export.heatmap <- FALSE
-#if(export.heatmap == TRUE){
-#  
-#  ggsave(heatmap.plot, 
-#         filename = paste0(results.folder, run.folder, "DE/heatmap/", contrast.name, "_heatmap_plot#.png"), 
-#         width = 14, 
-#         height = 10)
-#  
-#}
-#
-## GSEA Preranked List
-#
-#gsea.preranked.df <- gsea_preranked_list(contrast.field = contrast.field, 
-#                                         contrast.levels = contrast.groups, 
-#                                         annotation = lmm.input$annotation,
-#                                         log.counts = lmm.input$log.counts)
-#
-#export.gsea.input <- FALSE
-#if(export.gsea.input == TRUE){
-#  
-#  write.csv(GSEA.preanked.df, file = paste0(results.folder, run.folder, "GSEA/", contrast.name, #"_gsea_preranked_input.csv"), row.names = FALSE)
-#  
-#}
-
-
-```
-
-### Venn Diagrams for log FC cutoff of 1
-
-```{r Setup Gene Lists log FC 1}
-#| warning: false
-#| message: false
-
-# Load all DE results
-results.files <- list.files(paste0(results.folder, run.folder))
-
-up.results.list <- list()
-down.results.list <- list()
-
-logfc.cutoff <- 1
-
-results.files <- results.files[grepl(".csv", results.files)]
-
-
-for(file in results.files){
-  
-  # Load the results for a DE contrast
-  de.results <- as.data.frame(read.csv(paste0(results.folder, run.folder, file)))
-  
-  # Filter for DEGs for up and down regulated
-  logfc.column <- colnames(de.results)[grep("logFC", colnames(de.results))]
-  adj.pval.column <- colnames(de.results)[grep("adjpval", colnames(de.results))]
-  
-  up.degs.data <- de.results %>% 
-    filter(.data[[logfc.column]] > logfc.cutoff) %>% 
-    filter(.data[[adj.pval.column]] < 0.05)
-  
-  down.degs.data <- de.results %>% 
-  filter(.data[[logfc.column]] < -(logfc.cutoff)) %>% 
-  filter(.data[[adj.pval.column]] < 0.05)
-  
-  # Gather the DE gene names and store
-  up.degs <- up.degs.data$Gene
-  down.degs <- down.degs.data$Gene
-  
-  contrast.name <- gsub("_de.results.csv", "", file)
-  contrast.name <- gsub("_", " vs. ", contrast.name)
-  
-  if(length(up.degs) > 0){
-    
-    up.results.list[[contrast.name]] <- up.degs
-    
-  } else {
-    
-    # For group with no DEGs
-    up.results.list[[contrast.name]] <- "no DEGs"
-    
-  }
-  
-  if(length(down.degs) > 0){
-    
-    down.results.list[[contrast.name]] <- down.degs
-    
-  } else {
-    
-    # For group with no DEGs
-    down.results.list[[contrast.name]] <- "no DEGs"
-    
-  }
-  
-}
-```
-
-#### Up-regulated Venn Diagram
-
-```{r Create venn diagram for up degs log FC 1}
-#| warning: false
-#| message: false
-
-
-venn.up.degs <- venn.diagram(up.results.list, 
-                            main = "Up-regulated DEGs each DE Contrast",
-                            category.names = c(names(up.results.list)[1],
-                                               names(up.results.list)[2], 
-                                               names(up.results.list)[3], 
-                                               names(up.results.list)[4]), 
-                            fill = c("maroon", 
-                                     "#E69F00", 
-                                     "#56B4E9", 
-                                     "#009E73"), 
-                            filename = NULL)
-
-
-grid.draw(venn.up.degs)
-```
-
-```         
-```
-
-#### Boxplots
-
-```{r Deconvolution Boxplots}
-#| warning: false
-#| message: false
-
-tumor.vessel.comparison <- list(
-  c("tumor", "vessel"))
-
-tumor.immune.comparison <- list(
-  c("tumor", "immune"))
-
-vessel.immune.comparison <- list(
-  c("vessel", "immune"))
-
-skin.box.plot <- ggplot(data = skin.cell.melt, aes(x = region, 
-                                                   y = value, 
-                                                   fill = segment)) + 
-  geom_boxplot(color = "black") + 
-  facet_wrap(~cell.type, scales = "free_x") + 
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.major.x = element_blank()
-  ) + 
-  labs(y = "Percentage of Total") + 
-  stat_compare_means(comparisons = tumor.vessel.comparison, 
-                     label = "p.signif", 
-                     label.y = 20) + 
-  stat_compare_means(comparisons = tumor.immune.comparison, 
-                     label = "p.signif", 
-                     label.y = 40) + 
-  stat_compare_means(comparisons = vessel.immune.comparison, 
-                     label = "p.signif", 
-                     label.y = 30)
-
-immune.box.plot <- ggplot(data = immune.cell.melt, aes(x = region, 
-                                                   y = value, 
-                                                   fill = segment)) + 
-  geom_boxplot(color = "black") + 
-  facet_wrap(~cell.type, scales = "free_x") + 
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.major.x = element_blank()
-  ) + 
-  labs(y = "Percentage of Total") + 
-  stat_compare_means(comparisons = tumor.vessel.comparison, 
-                     label = "p.signif", 
-                     label.y = 20) + 
-  stat_compare_means(comparisons = tumor.immune.comparison, 
-                     label = "p.signif", 
-                     label.y = 40) + 
-  stat_compare_means(comparisons = vessel.immune.comparison, 
-                     label = "p.signif", 
-                     label.y = 30)
-
-bahman.box.plot <- ggplot(data = bahman.cell.melt, aes(x = region, 
-                                                   y = value, 
-                                                   fill = segment)) + 
-  geom_boxplot(color = "black") + 
-  facet_wrap(~cell.type, scales = "free_x") + 
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.major.x = element_blank()
-  ) + 
-  labs(y = "Percentage of Total") + 
-  stat_compare_means(comparisons = tumor.vessel.comparison, 
-                     label = "p.signif", 
-                     label.y = 20) + 
-  stat_compare_means(comparisons = tumor.immune.comparison, 
-                     label = "p.signif", 
-                     label.y = 40) + 
-  stat_compare_means(comparisons = vessel.immune.comparison, 
-                     label = "p.signif", 
-                     label.y = 30)
-
-# Export Boxplots
-export.decon.boxplots <- global.export.decon
-if(export.decon.boxplots == TRUE){
-  
-  ggsave(paste0(results.folder, 
-                run.folder, 
-                "spatial_decon/spatial_decon_skin_ref_region_boxplot.png"), 
-         skin.box.plot, 
-         height = 10, 
-         width = 14)
-  
-  ggsave(paste0(results.folder, 
-                run.folder, 
-                "spatial_decon/spatial_decon_immune_ref_region_boxplot.png"), 
-         immune.box.plot, 
-         height = 10, 
-         width = 14)
-  
-  ggsave(paste0(results.folder, 
-                run.folder, 
-                "spatial_decon/spatial_decon_bahman_ref_region_boxplot.png"), 
-         bahman.box.plot, 
-         height = 10, 
-         width = 14)
-  
-}
-
-```
-
-## StandR Analysis
-
-### Inputs
-
-```{r}
-
-# Load the StandR RUV object
-standr.ruv.object <- readRDS(file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
-
-# Convert to DGE for limma compatibility
-ruv.dge.object <- SE2DGEList(standr.ruv.object)
-
-
-
-```
-
-### Set up for Limma
-
-```{r}
-
-# The biological field to compare
-
-
-# Set up the design formula
-design <- model.matrix(~0 + combined_coll_annotations + ruv_W1 + ruv_W2 , data = colData(standr.ruv.object))
-
-colnames(design)
-colnames(design) <- gsub("^combined_coll_annotations","",colnames(design))
-colnames(design)
-
-contr.matrix <- makeContrasts(
-   Abnormal_v_Normal = glomerulus_abnormal_GeometricSegment - glomerulus_normal_GeometricSegment,
-   levels = colnames(design))
-
-# Filter genes by expression
-keep <- filterByExpr(ruv.dge.object, design)
-
-# Genes removed
-table(keep)
-rownames(ruv.dge.object)[!keep]
-
-# Remove low expression genes
-ruv.dge.object.gene.filter <- ruv.dge.object[keep, ]
-
-# Extimate Biological Coeff of Variation
-ruv.dge.object.gene.filter <- estimateDisp(ruv.dge.object.gene.filter, 
-                                           design = design, 
-                                           robust = TRUE)
-
-
-```
-
-#### BCV Plot
-
-```{r}
-
-
-bcv.df <- data.frame(
-  'BCV' = sqrt(ruv.dge.object.gene.filter$tagwise.dispersion),
-  'AveLogCPM' = ruv.dge.object.gene.filter$AveLogCPM,
-  'gene_id' = rownames(ruv.dge.object.gene.filter)
+de.outputs <- run_all_de_comparisons(
+  de.comparisons = de.comparisons,
+  normalized.object = normalized.object,
+  params = params,
+  standr.object = standr.ruv.object
 )
-
-bcv.df$highBCV <- bcv.df$BCV > 0.8
-
-if (!is.null(ruv.dge.object.gene.filter$trended.dispersion)) {
-  bcv.df$trendedBCV <- sqrt(ruv.dge.object.gene.filter$trended.dispersion)
-}
-
-bcv.plot <- ggplot(bcv.df, aes(x = AveLogCPM, y = BCV)) +
-  geom_point(
-    aes(color = highBCV),
-    alpha = 0.6,
-    size = 1.5) +
-  geom_text_repel(
-    data = subset(bcv.df, highBCV),
-    aes(label = gene_id),
-    size = 3,
-    max.overlaps = Inf) +
-  scale_color_manual(
-    values = c("FALSE" = "black", "TRUE" = "red"),
-    labels = c("Other genes", "BCV > 0.8"),
-    name = NULL) +
-  coord_cartesian(ylim = c(0, 1.3)) +
-  labs(
-    x = "Average log CPM",
-    y = "Biological coefficient of variation",
-    title = "BCV plot") +
-  theme_classic() +
-  theme(
-    legend.position = c(0.02, 0.98),
-    legend.justification = c(0, 1))
-
-# Add trended BCV line, if available
-if ("trendedBCV" %in% colnames(bcv.df)) {
-  bcv.plot <- bcv.plot +
-    geom_line(
-      data = bcv.df[order(bcv.df$AveLogCPM), ],
-      aes(y = trendedBCV),
-      color = "blue",
-      linewidth = 1
-    )
-}
-
-# Add common BCV line, if available
-if (!is.null(ruv.dge.object.gene.filter$common.dispersion)) {
-  bcv.plot <- bcv.plot +
-    geom_hline(
-      yintercept = sqrt(ruv.dge.object.gene.filter$common.dispersion),
-      color = "blue",
-      linetype = "dashed",
-      linewidth = 0.8
-    )
-}
-
-
-
-```
-
-#### Run Limma Voom
-
-```{r}
-
-
-object.metadata <- as.data.frame(colData(standr.ruv.object))
-
-# Define the field which represents biological samples
-# Slide should be used in the case of 1 subject per slide, otherwise a patient or animal ID should be used
-block <- object.metadata$slide_name
-
-# Estimate mean-variance trend, first pass
-v0 <- voom(ruv.dge.object.gene.filter, 
-           design = design, 
-           plot = TRUE)
-
-# Estimate the within block correlation
-corfit1 <- duplicateCorrelation(
-  v0,
-  design = design,
-  block = block
-)
-
-# Correlation for first pass
-corfit1$consensus.correlation
-
-# Estimate mean variance trend now with first block correlation
-v <- voom(
-  ruv.dge.object.gene.filter,
-  design = design,
-  block = block,
-  correlation = corfit1$consensus.correlation,
-  plot = TRUE
-)
-
-# Estimate the block correlation again with the second pass mean variance trend
-corfit2 <- duplicateCorrelation(
-  v,
-  design = design,
-  block = block
-)
-
-# Correlation for second pass
-corfit2$consensus.correlation
-
-# Linear model for each gene
-fit <- lmFit(
-  v,
-  design = design,
-  block = block,
-  correlation = corfit2$consensus.correlation
-)
-
-
-fit_contrast <- contrasts.fit(
-  fit,
-  contrasts = contr.matrix
-)
-
-# Final 
-efit <- eBayes(
-  fit_contrast,
-  robust = TRUE
-)
-
-
-results <- topTable(efit, 
-                    number = Inf)
-
-results.simple <- results %>% 
-  select(mean_expr, logFC, adj.P.Val)
-
-
-results.simple.degs <- results.simple %>% 
-  filter(adj.P.Val < 0.05) %>% 
-  filter(logFC < -1 | logFC > 1)
-```
-
-## Compare DEGS Default vs. StandR
-
-```{r}
-
-
 ```
