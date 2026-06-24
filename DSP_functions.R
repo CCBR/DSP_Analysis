@@ -857,6 +857,16 @@ improved_make_volcano <- function(lmm.results,
   lmm.results$de_direction[lmm.results$padj < 0.05 & 
                              lmm.results$logfc < -fc.limit] <- "DOWN"
   
+  # Count DEGs for legend labels
+  n_up <- sum(lmm.results$de_direction == "UP", na.rm = TRUE)
+  n_down <- sum(lmm.results$de_direction == "DOWN", na.rm = TRUE)
+  
+  contrast.level.labels <- c(
+    "UP" = paste0("UP (n = ", n_up, ")"),
+    "NONE" = "NONE", 
+    "DOWN" = paste0("DOWN (n = ", n_down, ")")
+  )
+  
   # Create a label for DEGs
   if(is.null(custom.gene.labels)){
     
@@ -904,9 +914,12 @@ improved_make_volcano <- function(lmm.results,
              y = y.lab, 
              title = title) + 
         geom_point(size = 2, alpha = alpha) +
-        scale_color_manual(legend.title, 
-                           values = contrast.level.colors, 
-                           breaks = "UP", "NONE", "DOWN") + 
+        scale_color_manual(
+          legend.title, 
+          values = contrast.level.colors, 
+          breaks = c("UP", "NONE", "DOWN"),
+          labels = contrast.level.labels[c("UP", "NONE", "DOWN")]
+        ) + 
         geom_text_repel(max.overlaps = Inf, 
                         show.legend = FALSE, 
                         size = label.size, 
@@ -947,9 +960,12 @@ improved_make_volcano <- function(lmm.results,
              y = y.lab, 
              title = title) + 
         geom_point(size = 2, alpha = alpha) +
-        scale_color_manual(legend.title, 
-                           values = contrast.level.colors, 
-                           breaks = c("UP", "NONE", "DOWN")) + 
+        scale_color_manual(
+          legend.title, 
+          values = contrast.level.colors, 
+          breaks = c("UP", "NONE", "DOWN"),
+          labels = contrast.level.labels[c("UP", "NONE", "DOWN")]
+        ) + 
         geom_text_repel(max.overlaps = Inf, 
                         show.legend = FALSE, 
                         size = label.size, 
@@ -1030,9 +1046,12 @@ improved_make_volcano <- function(lmm.results,
            y = "-log10 adjusted p-value", 
            title = title) + 
       geom_point(size = 2) +
-      scale_color_manual(legend.title, 
-                         values = contrast.level.colors, 
-                         breaks = c("UP", "DOWN")) + 
+      scale_color_manual(
+        legend.title, 
+        values = contrast.level.colors, 
+        breaks = c("UP", "DOWN"),
+        labels = contrast.level.labels[c("UP", "DOWN")]
+      ) + 
       geom_text_repel(data = lmm.results.labeled,
                       aes(x = logfc, 
                           y = -log10(padj), 
