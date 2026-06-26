@@ -479,7 +479,16 @@ standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
 ```{r Export StandR counts for DE}
 
 # Export the inputs for DE Analysis
-saveRDS(spatial.object.standr.final, file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+
+export = FALSE
+if(export){
+  
+  saveRDS(spatial.object.standr.final, 
+          file = paste0(params$data.folder, 
+                        "StandR/standr_ruv_object.RDS"))
+  
+}
+
 
 
 
@@ -722,7 +731,7 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```{r Write QC output}
 
-write.qc.file <- TRUE
+write.qc.file <- FALSE
 
 if(write.qc.file == TRUE){
   
@@ -1066,6 +1075,113 @@ standr.pca.list <- list("prenorm" = prenorm.pca.table,
 
 
 
+```
+
+#### Convert Default Counts for PCA Evaluation
+
+```{r}
+make_spe_for_standr <- function(
+  counts.df,
+  annot.df) {
+
+  colnames(counts.df) <- gsub("\\.dcc", "", colnames(counts.df))
+  
+  log.counts.df <- counts.df %>% 
+  mutate_all(~ log2(.))
+  
+  # Extract gene IDs.
+  gene.ids <- rownames(counts.df)
+
+  # Convert the count tables to a numeric matrix.
+  count.matrix <- as.matrix(counts.df)
+  log.count.matrix <- as.matrix(log.counts.df)
+
+  # Assign gene IDs as row names.
+  rownames(count.matrix) <- gene.ids
+  rownames(log.count.matrix) <- gene.ids
+
+  # Extract AOI/sample IDs from annotation.
+  aoi.ids <- rownames(annot.df)
+
+  # Check that every annotated AOI is present as a count matrix column.
+  missing.aois <- setdiff(aoi.ids, colnames(count.matrix))
+
+  if (length(missing.aois) > 0) {
+    stop(
+      "These AOIs are in annotation but not in counts.df columns: ",
+      paste(missing.aois, collapse = ", ")
+    )
+  }
+
+  # Reorder count matrix columns to match the annotation table.
+  count.matrix <- count.matrix[, aoi.ids, drop = FALSE]
+  log.count.matrix <- count.matrix[, aoi.ids, drop = FALSE]
+
+  # SpatialExperiment expects or creates a sample_id column.
+  # Add one explicitly so the object is predictable.
+  if (!"sample_id" %in% colnames(annot.df)) {
+    annot.df$sample_id <- aoi.ids
+  }
+
+  # Start the assay list with non-log counts.
+  assays <- list(counts = count.matrix)
+
+  # Add the log counts as assay 2, which will be used by the PCA eval function
+  assays$log_counts <- log.count.matrix
+
+  # Create basic feature metadata.
+  row.data <- S4Vectors::DataFrame(
+    gene_id = rownames(count.matrix)
+  )
+
+  rownames(row.data) <- rownames(count.matrix)
+
+  # Create AOI/sample metadata.
+  col.data <- S4Vectors::DataFrame(annot.df)
+
+  
+  # If no coordinates are available, this is still a valid SpatialExperiment.
+  spe <- SpatialExperiment::SpatialExperiment(
+    assays = assays,
+    rowData = row.data,
+    colData = col.data)
+
+  return(spe)
+}
+
+
+```
+
+#### Convert Default Normalized Counts to SPE
+
+```{r}
+
+# Set up annotation
+cleaned.annotation.df
+
+# Set up counts
+default.norm.counts <- q3.norm.counts.df
+colnames(default.norm.counts) <- gsub("\\.dcc", "", colnames(default.norm.counts))
+  
+default.spe <- make_spe_for_standr(
+  counts.df = default.norm.counts,
+  annot.df = cleaned.annotation.df
+)
+
+```
+
+### PCA Evaluation
+
+```{r}
+
+spe.list <- list(spatial.object.standr.aoi.QC, spatial.object.standr.final, default.spe)
+
+PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
+                                       bio_feature_name = "region",
+                                       batch_feature_name = "slide_name",
+                                       data_names = c("Raw","RUV","Default"))
+
+print(PCA.eval.plots)
 ```
 
 #### PCA by Segment
