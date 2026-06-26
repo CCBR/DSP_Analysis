@@ -366,6 +366,9 @@ length(genes.removed.from.qc)
 
 print(paste0(length(genes.removed.from.qc), " genes were removed based on sample fracton"))
 
+# For exporting in the QC excel file
+genes.removed.df <- data.frame(gene = genes.removed.from.qc)
+
 # A plot to show gene expression relative to the min count threshold
 gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC, 
                            ordannots = "slide_name", 
@@ -393,6 +396,8 @@ aois.before.qc <- colnames(spatial.object.standr.gene.QC)
 aois.after.qc <- colnames(spatial.object.standr.aoi.QC)
 
 aois.removed.from.qc <- setdiff(aois.before.qc, aois.after.qc)
+
+aois.removed.df <- data.frame(AOI = aois.removed.from.qc)
 
 cat("AOIs removed", "\n", aois.removed.from.qc)
 
@@ -713,17 +718,18 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```
 
-**Write QC Output File**
+## **Write QC Output File**
 
 ```{r Write QC output}
 
-write.qc.file <- FALSE
+write.qc.file <- TRUE
 
 if(write.qc.file == TRUE){
   
   # Start the QC output excel workbook
   qc.info.output <- createWorkbook()
   
+  ### Default QC
   # Add the AOI flag info to the output file
   addWorksheet(qc.info.output, "AOI QC Flags")
   writeData(qc.info.output, sheet = "AOI QC Flags", qc.output$segment.flags)
@@ -739,6 +745,15 @@ if(write.qc.file == TRUE){
   # Add the Gene detection QC info to the output file
   addWorksheet(qc.info.output, "Gene Detection Rate")
   writeData(qc.info.output, sheet = "Gene Detection Rate", gene.detection.summary)
+  
+  ### StandR QC
+  # Add the genes removed from sample fraction
+  addWorksheet(qc.info.output, "StandR Genes Removed")
+  writeData(qc.info.output, sheet = "StandR Genes Removed", genes.removed.df)
+  
+  # Add the AOIs removed from library size cutoff
+  addWorksheet(qc.info.output, "StandR AOIs Removed")
+  writeData(qc.info.output, sheet = "StandR AOIs Removed", aois.removed.df)
   
   # Save the QC output file
   saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
