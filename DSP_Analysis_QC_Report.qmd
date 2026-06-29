@@ -46,6 +46,9 @@ library(cowplot)
 library(preprocessCore)
 library(standR)
 library(SummarizedExperiment)
+library(scater)
+library(ggthemes)
+library(scales)
 
 source("DSP_QC_functions.R")
 ```
@@ -471,6 +474,157 @@ standr.counts.list[["ruv_corrected"]] <- assay(spatial.object.standr.final, "log
 
 standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
 
+
+```
+
+### RUV K Comparison
+
+```{r}
+
+pca.plot.list <- list()
+
+# DFs for storing PCA eval results
+bio.stats.df <- data.frame(
+  types = character(),
+  scores = numeric(),
+  k = character(),
+  stringsAsFactors = FALSE
+)
+
+batch.stats.df <- data.frame(
+  types = character(),
+  scores = numeric(),
+  k = character(),
+  stringsAsFactors = FALSE
+)
+
+# Biological factor of interest
+bio.field <- "combined_coll_annotations"
+
+# Batch factor
+batch.field <- "slide_name"
+
+# The number of k to test
+num.k <- 5
+
+for(i in seq(num.k)){
+  spe.ruv <- geomxBatchCorrection(spatial.object.standr.ruv, 
+                                  factors = experimental.fields, 
+                                  NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
+                                  k = i)
+  
+  pca.plot <- plotPairPCA(spe.ruv, 
+                          assay = 2, 
+                          n_dimension = 2, 
+                          color = region, 
+                          title = paste0("k = ", i))
+  
+  # PCA eval per biological factor of interest
+  bio.stats <- computeClusterEvalStats(
+    spe.ruv,
+    foiColumn = bio.field,
+    n_dimension = c(1, 2),
+    assay = "logcounts"
+  )
+  
+  bio.stats$k <- as.numeric(i)
+  
+  # PCA eval per batch
+  batch.stats <- computeClusterEvalStats(
+    spe.ruv,
+    foiColumn = batch.field,
+    n_dimension = c(1, 2),
+    assay = "logcounts"
+  )
+  
+  batch.stats$k <- as.numeric(i)
+  
+  k.name <- paste0("k_", i)
+  
+  pca.plot.list[[k.name]] <- pca.plot
+  
+  bio.stats.df <- rbind(bio.stats.df, bio.stats)
+  
+  batch.stats.df <- rbind(batch.stats.df, batch.stats)
+  
+}
+
+# Select only specific eval methods
+eval.methods <- c("Adjusted Rand Index", 
+                  "Silhouette Coefficient", 
+                  #"Chi-Squared Coefficient", 
+                  "Jaccard Index", 
+                  #"Overlap Coefficient", 
+                  "Mirkin Distance")
+
+bio.stats.df.subset <- bio.stats.df %>% 
+  filter(types %in% eval.methods)
+bio.stats.df.subset$factor <- paste0("Bio Factor: ", bio.field)
+
+batch.stats.df.subset <- batch.stats.df %>% 
+  filter(types %in% eval.methods)
+batch.stats.df.subset$factor <- paste0("Batch Factor: ", batch.field)
+
+# The combined bio and batch stats
+stats.df <- rbind(bio.stats.df.subset, batch.stats.df.subset)
+
+stats.df$scores <- as.numeric(stats.df$scores)
+stats.df$k <- as.numeric(stats.df$k)
+
+
+
+# Create a bar plot for the biological and batch factors
+
+stats.plot <- ggplot(
+  stats.df, 
+  aes(
+    x = k, 
+    y = scores, 
+    group = factor, 
+    color = factor
+  )
+) + 
+  geom_line() + 
+  geom_point() +
+  scale_y_continuous(
+    breaks = breaks_pretty(n = 5),
+    labels = label_number(accuracy = 0.001)
+  ) + 
+  scale_colour_colorblind() + 
+  facet_wrap(
+    ~ types, 
+    nrow = 1, 
+    scales = "free_y"
+  ) +
+  labs(
+    x = "k",
+    y = "Score", 
+    title = paste0("PCA Evaluation Stats")
+  )
+
+
+top.row <- plot_grid(
+  pca.k.list$k_1, 
+  pca.k.list$k_2, 
+  pca.k.list$k_3, 
+  pca.k.list$k_4, 
+  pca.k.list$k_5,
+  nrow = 1
+)
+
+bottom.row <- plot_grid(
+  stats.plot,
+  nrow = 1
+)
+
+best.k.comparison.plot <- plot_grid(
+  top.row,
+  bottom.row,
+  ncol = 1,
+  rel_heights = c(1, 1)
+)
+
+print(best.k.comparison.plot)
 
 ```
 
