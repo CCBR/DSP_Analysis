@@ -31,6 +31,9 @@ library(grid)
 library(DSPWorkflow)
 library(standR)
 library(SpatialExperiment)
+library(ggVennDiagram)
+library(patchwork)
+library(openxlsx)
 
 # Source the helper functions
 source("DSP_functions.R")
@@ -111,11 +114,11 @@ common.comparison.parameters <- list(
   volcano.height = 10, 
   
   label.top.genes = FALSE,
-  make.nolabel.volcano = TRUE,
+  make.nolabel.volcano = FALSE,
 
-  export.volcano = TRUE,
-  export.volcano.nolabel = TRUE,
-  export.gsea.input = TRUE
+  export.volcano = FALSE,
+  export.volcano.nolabel = FALSE,
+  export.gsea.input = FALSE
 )
 
 
@@ -255,7 +258,7 @@ de.comparisons <- list(
 
 ```
 
-## Updated Run Comparisons
+## Run DE Comparisons
 
 ```{r}
 
@@ -265,4 +268,193 @@ de.outputs <- run_all_de_comparisons(
   params = params,
   standr.object = standr.ruv.object
 )
+```
+
+## Venn Diagram to Compare Method DEGs
+
+### Venn Function
+
+```{r}
+
+# Venn Diagram function
+
+method_degs_venn <- function(de.results, 
+                             title, 
+                             logfc.cutoff){ 
+  
+  # Gather the up and down degs for each result
+  up.standr <- de.results$method.results$standr$results %>% 
+    filter(padj < 0.05, logfc >= logfc.cutoff)
+  up.standr.degs <- up.standr$gene
+  
+  down.standr <- de.results$method.results$standr$results %>% 
+    filter(padj < 0.05, logfc <= -logfc.cutoff)
+  down.standr.degs <- down.standr$gene
+  
+  up.default <- de.results$method.results$default$results %>% 
+    filter(padj < 0.05, logfc >= logfc.cutoff)
+  up.default.degs <- up.default$gene
+  
+  down.default <- de.results$method.results$default$results %>% 
+    filter(padj < 0.05, logfc <= -logfc.cutoff)
+  down.default.degs <- down.default$gene
+  
+  
+  up.venn <- ggVennDiagram(list("StandR" = up.standr.degs, 
+                                "Default" = up.default.degs), 
+                           label = "count", 
+                           set_size = 0) + 
+    scale_fill_gradient(low="grey90",high = "red") + 
+    ggtitle(paste0("Upregulated DEGs, logFC > ", logfc.cutoff)) + 
+    annotate(
+      "text",
+      x = 0,
+      y = 7.0,
+      label = "Default",
+      size = 5,
+      fontface = "bold") +
+    annotate(
+      "text",
+      x = 0,
+      y = -3.0,
+      label = "StandR",
+      size = 5,
+      fontface = "bold")
+  
+  down.venn <- ggVennDiagram(list("StandR" = down.standr.degs, 
+                                "Default" = down.default.degs), 
+                             label = "count", 
+                             set_size = 0) + 
+    scale_fill_gradient(low="grey90",high = "blue") + 
+    ggtitle(paste0("Downregulated DEGs, logFC < -", logfc.cutoff)) + 
+    annotate(
+      "text",
+      x = 0,
+      y = 7.0,
+      label = "Default",
+      size = 5,
+      fontface = "bold") +
+    annotate(
+      "text",
+      x = 0,
+      y = -3.0,
+      label = "StandR",
+      size = 5,
+      fontface = "bold")
+  
+  all.venn <- up.venn + down.venn + 
+    plot_layout(ncol = 2) + 
+    plot_annotation(title = title, 
+                    theme = theme(
+                      plot.title = element_text(
+                      size = 16,
+                      face = "bold",
+                      hjust = 0.5)
+                      )
+    )
+  
+  
+  # Get the overlapping DEGs list
+  up.shared <- intersect(up.standr.degs, up.default.degs) 
+  up.standr.unique <- setdiff(up.standr.degs, up.default.degs)
+  up.default.unique <- setdiff(up.default.degs, up.standr.degs)
+  down.shared <- intersect(down.standr.degs, down.default.degs)
+  down.standr.unique <- setdiff(down.standr.degs, down.default.degs)
+  down.default.unique <- setdiff(down.default.degs, down.standr.degs)
+  
+  venn.degs.df <- data.frame(
+    group = c(rep("up_shared", length(up.shared)),
+              rep("up_standr", length(up.standr.unique)),
+              rep("up_default", length(up.default.unique)), 
+              rep("down_shared", length(down.shared)),
+              rep("down_standr", length(down.standr.unique)),
+              rep("down_default", length(down.default.unique))
+              ),
+  gene = c(
+    up.shared, 
+    up.standr.unique, 
+    up.default.unique, 
+    down.shared, 
+    down.standr.unique, 
+    down.default.unique
+    )
+)
+  
+  
+  
+  return(list("up.venn" = up.venn, 
+              "down.venn" = down.venn, 
+              "all.venn" = all.venn, 
+              "venn.degs.df" = venn.degs.df))
+  
+}
+
+```
+
+### Create Venn Diagrams
+
+```{r}
+
+# Toggle for the deg list to be written out as an excel file
+write.deg.lists <- TRUE
+
+# Toggle to export the venn diagrams
+export.venn <- TRUE
+
+
+comparison.venn.list <- list()
+
+for(comparison in names(de.outputs)){
+  
+  comparison.de.results <- de.outputs[[comparison]]
+  
+  comparison.title <- str_to_title(gsub("_", " ", comparison))
+  comparison.venn.diagrams <- method_degs_venn(de.results = comparison.de.results, 
+                                               title = comparison.title, 
+                                               logfc.cutoff = 1)
+  
+  comparison.venn.list[[comparison]] <- comparison.venn.diagrams
+  
+  if(export.venn){
+    
+    ggsave(comparison.venn.diagrams$all.venn, 
+           file = paste0(params$de.folder, 
+                         "method_comparison/", 
+                         comparison, 
+                         "_de_venn.png"))
+    
+  }
+  
+  
+}
+
+
+
+
+# Create an excel output file with one tab per contrast
+if(write.deg.lists == TRUE){
+  
+  deg.list.output <- createWorkbook()
+  
+  for(comparison in names(comparison.venn.list)){
+    
+    deg.list <- comparison.venn.list[[comparison]]$venn.degs.df
+    
+    addWorksheet(deg.list.output, comparison)
+    writeData(deg.list.output, 
+              sheet = comparison, 
+              deg.list)
+    
+    saveWorkbook(deg.list.output, 
+                 paste0(params$de.folder, 
+                        "method_comparison/", 
+                        "deg_list_method_comparison.xlsx"), 
+                 overwrite = TRUE)
+  }
+  
+}
+  
+
+
+
 ```

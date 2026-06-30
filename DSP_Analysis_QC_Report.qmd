@@ -46,6 +46,9 @@ library(cowplot)
 library(preprocessCore)
 library(standR)
 library(SummarizedExperiment)
+library(scater)
+library(ggthemes)
+library(scales)
 
 source("DSP_QC_functions.R")
 ```
@@ -366,6 +369,9 @@ length(genes.removed.from.qc)
 
 print(paste0(length(genes.removed.from.qc), " genes were removed based on sample fracton"))
 
+# For exporting in the QC excel file
+genes.removed.df <- data.frame(gene = genes.removed.from.qc)
+
 # A plot to show gene expression relative to the min count threshold
 gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC, 
                            ordannots = "slide_name", 
@@ -393,6 +399,8 @@ aois.before.qc <- colnames(spatial.object.standr.gene.QC)
 aois.after.qc <- colnames(spatial.object.standr.aoi.QC)
 
 aois.removed.from.qc <- setdiff(aois.before.qc, aois.after.qc)
+
+aois.removed.df <- data.frame(AOI = aois.removed.from.qc)
 
 cat("AOIs removed", "\n", aois.removed.from.qc)
 
@@ -469,12 +477,172 @@ standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
 
 ```
 
+### RUV K Comparison
+
+```{r}
+
+pca.plot.list <- list()
+
+# DFs for storing PCA eval results
+bio.stats.df <- data.frame(
+  types = character(),
+  scores = numeric(),
+  k = character(),
+  stringsAsFactors = FALSE
+)
+
+batch.stats.df <- data.frame(
+  types = character(),
+  scores = numeric(),
+  k = character(),
+  stringsAsFactors = FALSE
+)
+
+# Biological factor of interest
+bio.field <- "combined_coll_annotations"
+
+# Batch factor
+batch.field <- "slide_name"
+
+# The number of k to test
+num.k <- 5
+
+for(i in seq(num.k)){
+  spe.ruv <- geomxBatchCorrection(spatial.object.standr.ruv, 
+                                  factors = experimental.fields, 
+                                  NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
+                                  k = i)
+  
+  pca.plot <- plotPairPCA(spe.ruv, 
+                          assay = 2, 
+                          n_dimension = 2, 
+                          color = region, 
+                          title = paste0("k = ", i))
+  
+  # PCA eval per biological factor of interest
+  bio.stats <- computeClusterEvalStats(
+    spe.ruv,
+    foiColumn = bio.field,
+    n_dimension = c(1, 2),
+    assay = "logcounts"
+  )
+  
+  bio.stats$k <- as.numeric(i)
+  
+  # PCA eval per batch
+  batch.stats <- computeClusterEvalStats(
+    spe.ruv,
+    foiColumn = batch.field,
+    n_dimension = c(1, 2),
+    assay = "logcounts"
+  )
+  
+  batch.stats$k <- as.numeric(i)
+  
+  k.name <- paste0("k_", i)
+  
+  pca.plot.list[[k.name]] <- pca.plot
+  
+  bio.stats.df <- rbind(bio.stats.df, bio.stats)
+  
+  batch.stats.df <- rbind(batch.stats.df, batch.stats)
+  
+}
+
+# Select only specific eval methods
+eval.methods <- c("Adjusted Rand Index", 
+                  "Silhouette Coefficient", 
+                  #"Chi-Squared Coefficient", 
+                  "Jaccard Index", 
+                  #"Overlap Coefficient", 
+                  "Mirkin Distance")
+
+bio.stats.df.subset <- bio.stats.df %>% 
+  filter(types %in% eval.methods)
+bio.stats.df.subset$factor <- paste0("Bio Factor: ", bio.field)
+
+batch.stats.df.subset <- batch.stats.df %>% 
+  filter(types %in% eval.methods)
+batch.stats.df.subset$factor <- paste0("Batch Factor: ", batch.field)
+
+# The combined bio and batch stats
+stats.df <- rbind(bio.stats.df.subset, batch.stats.df.subset)
+
+stats.df$scores <- as.numeric(stats.df$scores)
+stats.df$k <- as.numeric(stats.df$k)
+
+
+
+# Create a bar plot for the biological and batch factors
+
+stats.plot <- ggplot(
+  stats.df, 
+  aes(
+    x = k, 
+    y = scores, 
+    group = factor, 
+    color = factor
+  )
+) + 
+  geom_line() + 
+  geom_point() +
+  scale_y_continuous(
+    breaks = breaks_pretty(n = 5),
+    labels = label_number(accuracy = 0.001)
+  ) + 
+  scale_colour_colorblind() + 
+  facet_wrap(
+    ~ types, 
+    nrow = 1, 
+    scales = "free_y"
+  ) +
+  labs(
+    x = "k",
+    y = "Score", 
+    title = paste0("PCA Evaluation Stats")
+  )
+
+
+top.row <- plot_grid(
+  pca.plot.list$k_1, 
+  pca.plot.list$k_2, 
+  pca.plot.list$k_3, 
+  pca.plot.list$k_4, 
+  pca.plot.list$k_5,
+  nrow = 1
+)
+
+bottom.row <- plot_grid(
+  stats.plot,
+  nrow = 1
+)
+
+best.k.comparison.plot <- plot_grid(
+  top.row,
+  bottom.row,
+  ncol = 1,
+  rel_heights = c(1, 1)
+)
+
+print(best.k.comparison.plot)
+
+```
+
 ### Export for DE Analysis
 
 ```{r Export StandR counts for DE}
 
 # Export the inputs for DE Analysis
-saveRDS(spatial.object.standr.final, file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+
+export = FALSE
+if(export){
+  
+  saveRDS(spatial.object.standr.final, 
+          file = paste0(params$data.folder, 
+                        "StandR/standr_ruv_object.RDS"))
+  
+}
+
 
 
 
@@ -713,7 +881,7 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```
 
-**Write QC Output File**
+## **Write QC Output File**
 
 ```{r Write QC output}
 
@@ -724,6 +892,7 @@ if(write.qc.file == TRUE){
   # Start the QC output excel workbook
   qc.info.output <- createWorkbook()
   
+  ### Default QC
   # Add the AOI flag info to the output file
   addWorksheet(qc.info.output, "AOI QC Flags")
   writeData(qc.info.output, sheet = "AOI QC Flags", qc.output$segment.flags)
@@ -739,6 +908,15 @@ if(write.qc.file == TRUE){
   # Add the Gene detection QC info to the output file
   addWorksheet(qc.info.output, "Gene Detection Rate")
   writeData(qc.info.output, sheet = "Gene Detection Rate", gene.detection.summary)
+  
+  ### StandR QC
+  # Add the genes removed from sample fraction
+  addWorksheet(qc.info.output, "StandR Genes Removed")
+  writeData(qc.info.output, sheet = "StandR Genes Removed", genes.removed.df)
+  
+  # Add the AOIs removed from library size cutoff
+  addWorksheet(qc.info.output, "StandR AOIs Removed")
+  writeData(qc.info.output, sheet = "StandR AOIs Removed", aois.removed.df)
   
   # Save the QC output file
   saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
@@ -1053,6 +1231,113 @@ standr.pca.list <- list("prenorm" = prenorm.pca.table,
 
 ```
 
+#### Convert Default Counts for PCA Evaluation
+
+```{r}
+make_spe_for_standr <- function(
+  counts.df,
+  annot.df) {
+
+  colnames(counts.df) <- gsub("\\.dcc", "", colnames(counts.df))
+  
+  log.counts.df <- counts.df %>% 
+  mutate_all(~ log2(.))
+  
+  # Extract gene IDs.
+  gene.ids <- rownames(counts.df)
+
+  # Convert the count tables to a numeric matrix.
+  count.matrix <- as.matrix(counts.df)
+  log.count.matrix <- as.matrix(log.counts.df)
+
+  # Assign gene IDs as row names.
+  rownames(count.matrix) <- gene.ids
+  rownames(log.count.matrix) <- gene.ids
+
+  # Extract AOI/sample IDs from annotation.
+  aoi.ids <- rownames(annot.df)
+
+  # Check that every annotated AOI is present as a count matrix column.
+  missing.aois <- setdiff(aoi.ids, colnames(count.matrix))
+
+  if (length(missing.aois) > 0) {
+    stop(
+      "These AOIs are in annotation but not in counts.df columns: ",
+      paste(missing.aois, collapse = ", ")
+    )
+  }
+
+  # Reorder count matrix columns to match the annotation table.
+  count.matrix <- count.matrix[, aoi.ids, drop = FALSE]
+  log.count.matrix <- count.matrix[, aoi.ids, drop = FALSE]
+
+  # SpatialExperiment expects or creates a sample_id column.
+  # Add one explicitly so the object is predictable.
+  if (!"sample_id" %in% colnames(annot.df)) {
+    annot.df$sample_id <- aoi.ids
+  }
+
+  # Start the assay list with non-log counts.
+  assays <- list(counts = count.matrix)
+
+  # Add the log counts as assay 2, which will be used by the PCA eval function
+  assays$log_counts <- log.count.matrix
+
+  # Create basic feature metadata.
+  row.data <- S4Vectors::DataFrame(
+    gene_id = rownames(count.matrix)
+  )
+
+  rownames(row.data) <- rownames(count.matrix)
+
+  # Create AOI/sample metadata.
+  col.data <- S4Vectors::DataFrame(annot.df)
+
+  
+  # If no coordinates are available, this is still a valid SpatialExperiment.
+  spe <- SpatialExperiment::SpatialExperiment(
+    assays = assays,
+    rowData = row.data,
+    colData = col.data)
+
+  return(spe)
+}
+
+
+```
+
+#### Convert Default Normalized Counts to SPE
+
+```{r}
+
+# Set up annotation
+cleaned.annotation.df
+
+# Set up counts
+default.norm.counts <- q3.norm.counts.df
+colnames(default.norm.counts) <- gsub("\\.dcc", "", colnames(default.norm.counts))
+  
+default.spe <- make_spe_for_standr(
+  counts.df = default.norm.counts,
+  annot.df = cleaned.annotation.df
+)
+
+```
+
+### PCA Evaluation
+
+```{r}
+
+spe.list <- list(spatial.object.standr.aoi.QC, spatial.object.standr.final, default.spe)
+
+PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
+                                       bio_feature_name = "region",
+                                       batch_feature_name = "slide_name",
+                                       data_names = c("Raw","RUV","Default"))
+
+print(PCA.eval.plots)
+```
+
 #### PCA by Segment
 
 ```{r PCA for Segment, fig.width=12, fig.height=8}
@@ -1083,7 +1368,7 @@ default.pca.region <- PCA_biplots(pca.table.list = default.pca.list,
 
 standr.pca.region <- PCA_biplots(pca.table.list = standr.pca.list, 
                                    color.group = "region")
-s
+
 print(default.pca.region)
 print(standr.pca.region)
 ```
