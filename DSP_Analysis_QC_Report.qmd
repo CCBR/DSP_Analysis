@@ -604,11 +604,11 @@ stats.plot <- ggplot(
 
 
 top.row <- plot_grid(
-  pca.k.list$k_1, 
-  pca.k.list$k_2, 
-  pca.k.list$k_3, 
-  pca.k.list$k_4, 
-  pca.k.list$k_5,
+  pca.plot.list$k_1, 
+  pca.plot.list$k_2, 
+  pca.plot.list$k_3, 
+  pca.plot.list$k_4, 
+  pca.plot.list$k_5,
   nrow = 1
 )
 
@@ -1368,7 +1368,7 @@ default.pca.region <- PCA_biplots(pca.table.list = default.pca.list,
 
 standr.pca.region <- PCA_biplots(pca.table.list = standr.pca.list, 
                                    color.group = "region")
-s
+
 print(default.pca.region)
 print(standr.pca.region)
 ```
