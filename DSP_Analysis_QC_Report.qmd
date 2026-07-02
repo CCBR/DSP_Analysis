@@ -49,6 +49,7 @@ library(SummarizedExperiment)
 library(scater)
 library(ggthemes)
 library(scales)
+library(cowplot)
 
 source("DSP_QC_functions.R")
 ```
@@ -414,7 +415,7 @@ cat("AOIs removed", "\n", aois.removed.from.qc)
 # Apply Normalization for Evaluation
 spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, method = "TMM")
 
-# Run RUV on non-Normalized data
+# Setup object for RUV with identified neg controls
 spatial.object.standr.ruv <- findNCGs(spatial.object.standr.aoi.QC, 
                                              batch_name = "slide_name", 
                                              top_n = 200)
@@ -457,24 +458,6 @@ mean.ncg.var.rank <- mean(var.rank[ncg.genes]) / length(var.all)
 log.cpm.means <- rowMeans(log.cpm.counts[ncg.genes,])
 
 var.means.plot <- plot(log.cpm.means, var.ncg, pch = 16, cex = 0.5)
-
-experimental.fields <- c("combined_coll_annotations", "class")
-
-spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.ruv, 
-                                factors = experimental.fields, 
-                                NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
-                                k = 2)
-
-# Extract the counts
-standr.counts.list <- list()
-
-standr.counts.list[["pre_norm"]] <- assay(spatial.object.standr.aoi.QC, "logcounts")
-standr.counts.list[["TMM_norm"]] <- assay(spatial.object.standr.normalized, "logcounts")
-standr.counts.list[["ruv_corrected"]] <- assay(spatial.object.standr.final, "logcounts")
-
-standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
-
-
 ```
 
 ### RUV K Comparison
@@ -626,6 +609,28 @@ best.k.comparison.plot <- plot_grid(
 
 print(best.k.comparison.plot)
 
+```
+
+#### Apply Batch Correction for Best K
+
+```{r}
+
+experimental.fields <- c("combined_coll_annotations", "class")
+best.k <- 2
+
+spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.ruv, 
+                                factors = experimental.fields, 
+                                NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
+                                k = best.k)
+
+# Extract the counts
+standr.counts.list <- list()
+
+standr.counts.list[["pre_norm"]] <- assay(spatial.object.standr.aoi.QC, "logcounts")
+standr.counts.list[["TMM_norm"]] <- assay(spatial.object.standr.normalized, "logcounts")
+standr.counts.list[["ruv_corrected"]] <- assay(spatial.object.standr.final, "logcounts")
+
+standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
 ```
 
 ### Export for DE Analysis
@@ -1269,7 +1274,7 @@ make_spe_for_standr <- function(
 
   # Reorder count matrix columns to match the annotation table.
   count.matrix <- count.matrix[, aoi.ids, drop = FALSE]
-  log.count.matrix <- count.matrix[, aoi.ids, drop = FALSE]
+  log.count.matrix <- log.count.matrix[, aoi.ids, drop = FALSE]
 
   # SpatialExperiment expects or creates a sample_id column.
   # Add one explicitly so the object is predictable.
@@ -1281,7 +1286,7 @@ make_spe_for_standr <- function(
   assays <- list(counts = count.matrix)
 
   # Add the log counts as assay 2, which will be used by the PCA eval function
-  assays$log_counts <- log.count.matrix
+  assays$logcounts <- log.count.matrix
 
   # Create basic feature metadata.
   row.data <- S4Vectors::DataFrame(
@@ -1336,6 +1341,264 @@ PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
                                        data_names = c("Raw","RUV","Default"))
 
 print(PCA.eval.plots)
+```
+
+#### StandR versus Default
+
+```{r}
+
+# For making the order of the legend and colots in the PCA plots consistent
+bio.levels <- unique(as.character(colData(spatial.object.standr)[[bio.field]]))
+batch.levels <- unique(as.character(colData(spatial.object.standr)[[batch.field]]))
+
+
+# For plotting
+make_legend <- function(field, levels.use, title.width, label.width) {
+  
+  levels.use.reformat <- str_to_title(gsub("_"," ", levels.use))
+  field.reformat <- str_to_title(gsub("_"," ", field))
+  
+  legend.df <- data.frame(
+    x = 1,
+    y = seq_along(levels.use.reformat),
+    group = factor(levels.use.reformat, levels = levels.use.reformat)
+  )
+  
+  legend.plot <- ggplot(
+    legend.df,
+    aes(x = x, y = y, color = group)
+  ) +
+    geom_point(size = 3) +
+    scale_colour_colorblind(
+      limits = levels.use.reformat,
+      drop = FALSE,
+      name = stringr::str_wrap(field.reformat, width = title.width), 
+      labels = function(x) stringr::str_wrap(x, width = label.width)
+    ) +
+    theme_void() +
+    theme(
+      legend.position = "right", 
+      legend.title = element_text(size = 12, lineheight = 0.9),
+      legend.text = element_text(size = 10, lineheight = 0.9),
+      legend.key.size = unit(0.7, "cm"),
+      legend.spacing.y = unit(0.7, "cm"),
+      plot.margin = margin(0, 0, 0, 0)
+    )
+  
+  cowplot::get_legend(legend.plot)
+}
+
+
+# A list of the spatial objects to use for the counts comparison
+method.list <- list(Raw = spatial.object.standr, 
+                    Q3 = default.spe, 
+                    RUV = spatial.object.standr.final)
+
+pca.plot.list.bio <- list()
+pca.plot.list.batch <- list()
+
+# DFs for storing PCA eval results
+bio.stats.df <- data.frame(
+  types = character(),
+  scores = numeric(),
+  method = character(),
+  stringsAsFactors = FALSE
+)
+
+batch.stats.df <- data.frame(
+  types = character(),
+  scores = numeric(),
+  method = character(),
+  stringsAsFactors = FALSE
+)
+
+# Biological factor of interest
+bio.field <- "combined_coll_annotations"
+
+# Batch factor
+batch.field <- "slide_name"
+
+for(method.name in names(method.list)){
+  
+  spatial.object <- method.list[[method.name]]
+  
+  # PCA for biological factor of interest
+  set.seed(123)
+  pca.plot.bio <- drawPCA(
+    spatial.object,
+    dims = c(1, 2),
+    assay = 2,
+    color = !!sym(bio.field)) +
+    ggthemes::scale_colour_colorblind(
+      limits = bio.levels,
+      drop = FALSE,
+      name = bio.field) +
+    ggtitle(method.name) + 
+    theme(legend.position = "none")
+  
+  # PCA for batch factor
+  set.seed(123)
+  pca.plot.batch <- drawPCA(
+    spatial.object,
+    dims = c(1, 2),
+    assay = 2,
+    color = !!sym(batch.field)) +
+    ggthemes::scale_colour_colorblind(
+      limits = batch.levels,
+      drop = FALSE,
+      name = batch.field) +
+    ggtitle(method.name) + 
+    theme(legend.position = "none")
+  
+  # PCA eval per biological factor of interest
+  bio.stats <- computeClusterEvalStats(
+    spatial.object,
+    foiColumn = bio.field,
+    n_dimension = c(1, 2),
+    assay = "logcounts"
+  )
+  
+  bio.stats$method <- method.name
+  
+  # PCA eval per batch
+  batch.stats <- computeClusterEvalStats(
+    spatial.object,
+    foiColumn = batch.field,
+    n_dimension = c(1, 2),
+    assay = "logcounts"
+  )
+  
+  batch.stats$method <- method.name
+  
+  pca.plot.list.bio[[method.name]] <- pca.plot.bio
+  pca.plot.list.batch[[method.name]] <- pca.plot.batch
+  
+  bio.stats.df <- rbind(bio.stats.df, bio.stats)
+  
+  batch.stats.df <- rbind(batch.stats.df, batch.stats)
+  
+}
+
+bio.legend <- make_legend(
+  field = bio.field,
+  levels.use = bio.levels, 
+  title.width = 20, 
+  label.width = 20
+)
+
+batch.legend <- make_legend(
+  field = batch.field,
+  levels.use = batch.levels, 
+  title.width = 20, 
+  label.width = 20
+)
+
+# Select only specific eval methods
+eval.methods <- c("Adjusted Rand Index", 
+                  "Silhouette Coefficient"
+                  #,
+                  #"Chi-Squared Coefficient", 
+                  #"Jaccard Index", 
+                  #"Overlap Coefficient", 
+                  #"Mirkin Distance"
+                  )
+
+bio.stats.df.subset <- bio.stats.df %>% 
+  filter(types %in% eval.methods)
+bio.stats.df.subset$factor <- paste0("Bio Factor: ", str_to_title(gsub("_", " ", bio.field)))
+
+batch.stats.df.subset <- batch.stats.df %>% 
+  filter(types %in% eval.methods)
+batch.stats.df.subset$factor <- paste0("Batch Factor: ", str_to_title(gsub("_", " ", batch.field)))
+
+# The combined bio and batch stats
+stats.df <- rbind(bio.stats.df.subset, batch.stats.df.subset)
+
+stats.df$scores <- as.numeric(stats.df$scores)
+
+# For ordering the x axis labels
+stats.df$method <- factor(
+  stats.df$method,
+  levels = c("Raw", "Q3", "RUV")
+)
+
+# Create a bar plot for the biological and batch factors
+
+stats.plot <- ggplot(
+  stats.df, 
+  aes(
+    x = method, 
+    y = scores, 
+    group = factor, 
+    color = factor
+  )
+) + 
+  geom_line() + 
+  geom_point() +
+  scale_y_continuous(
+    breaks = breaks_pretty(n = 5),
+    labels = label_number(accuracy = 0.001)
+  ) + 
+  scale_colour_colorblind() + 
+  facet_wrap(
+    ~ types, 
+    nrow = 1, 
+    scales = "free_y"
+  ) +
+  labs(
+    x = "Method",
+    y = "Score", 
+    title = paste0("PCA Evaluation Stats")
+  )
+
+# Top row: biological factor PCA plots
+top.row.plots <- plot_grid(
+  pca.plot.list.bio$Raw, 
+  pca.plot.list.bio$Q3, 
+  pca.plot.list.bio$RUV, 
+  nrow = 1, 
+  rel_widths = c(1, 1, 1)
+)
+
+top.row <- plot_grid(
+  top.row.plots,
+  bio.legend,
+  nrow = 1,
+  rel_widths = c(1, 0.18)
+)
+
+# Middle row: batch factor PCA plots
+middle.row.plots <- plot_grid(
+  pca.plot.list.batch$Raw, 
+  pca.plot.list.batch$Q3, 
+  pca.plot.list.batch$RUV, 
+  nrow = 1, 
+  rel_widths = c(1, 1, 1)
+)
+
+middle.row <- plot_grid(
+  middle.row.plots,
+  batch.legend,
+  nrow = 1,
+  rel_widths = c(1, 0.18)
+)
+
+# Bottom row: PCA evaluation stats
+bottom.row <- plot_grid(
+  stats.plot,
+  nrow = 1
+)
+
+# Final combined plot
+method.comparison.plot <- plot_grid(
+  top.row,
+  middle.row, 
+  bottom.row,
+  ncol = 1,
+  rel_heights = c(1, 1, 1)
+)
+
+print(method.comparison.plot)
 ```
 
 #### PCA by Segment
