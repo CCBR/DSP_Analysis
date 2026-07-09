@@ -7,7 +7,7 @@ editor: visual
 #css: "qc_report_style.css"
 
 params:
-  dsp.analysis.folder : "/Users/cauleyes/CPTR/DSP_Analysis/"
+  dsp.analysis.folder: "/Users/cauleyes/CPTR/DSP_Analysis/"
   data.folder: "test_datasets/Human_Kidney/"
   results.folder: "test_datasets/Human_Kidney/"
   run.folder: "qc_report/"
@@ -22,6 +22,7 @@ params:
 
 # Load all relevant libraries
 
+library(yaml)
 library(DSPWorkflow)
 library(GeomxTools)
 library(dplyr)
@@ -100,6 +101,12 @@ init.object <- initialize_object(dcc.files = dcc.files,
                             nuclei.field.name = nuclei.field.name, 
                             segment.id.length = segment.id.length)
 
+
+# Establish fields of interest for QC plots
+qc.plot.bio.field.1 <- params$qc$qc.plot.bio.field.1
+qc.plot.bio.field.2 <- params$qc$qc.plot.bio.field.2
+qc.plot.batch.field <- params$qc$qc.plot.batch.field
+
 export <- FALSE
 if(export){
   
@@ -142,67 +149,60 @@ if(export){
 #| fig-cap: "Sankey Plot"
 #| warning: false
 
+### Investigate fields for collinearity ###
+### Each value in a field to be used in the DE comparisons should have unique combinations with values from all other fields used in comparisons
+### Example: Avoid when Field 1 value A is always Field 2 value B. Combine Field 1 and 2 in this instance into a new field in this instance
+
+init.annotation.df <- pData(init.object)
+
+# Establish the order of values in each lane
+# Lane 1
+if(params$lane.1.order == "default"){
+  lane.1.order <- unique(init.annotation.df[[params$sankey$lane1]])
+} else {
+  lane.1.order <- params$sankey$lane.1.order
+}
+# Lane 2
+if(params$lane.2.order == "default"){
+  lane.2.order <- unique(init.annotation.df[[params$sankey$lane2]])
+} else {
+  lane.2.order <- params$sankey$lane.2.order
+}
+# Lane 3
+if(params$lane.3.order == "default"){
+  lane.3.order <- unique(init.annotation.df[[params$sankey$lane3]])
+} else {
+  lane.3.order <- params$sankey$lane.3.order
+}
+# Lane 4
+if(params$lane.1.order == "default"){
+  lane.4.order <- unique(init.annotation.df[[params$sankey$lane4]])
+} else {
+  lane.4.order <- params$sankey$lane.4.order
+}
+
 # Plot the default fields
 sankey.output <- plot_sankey(object = init.object, 
-                      lane.1 = "slide", 
-                      lane.1.order = c("disease3", 
-                                       "disease4", 
-                                       "normal3", 
-                                       "normal4", 
-                                       "disease1B", 
-                                       "disease2B", 
-                                       "normal2B" ),
-                      lane.2 = "class", 
-                      lane.2.order = c("DKD", "normal"),
-                      lane.3 = "region", 
-                      lane.3.order = c("glomerulus", 
-                                       "tubule"), 
-                      lane.4 = "segment", 
-                      lane.4.order = c("GeometricSegment", 
-                                       "PanCK_pos", 
-                                       "PanCK_neg"),
-                      fill.lane = "region")
+                      lane.1 = params$sankey$lane1, 
+                      lane.1.order = lane.1.order,
+                      lane.2 = params$sankey$lane2, 
+                      lane.2.order = lane.2.order,
+                      lane.3 = params$sankey$lane3, 
+                      lane.3.order = lane.3.order, 
+                      lane.4 = params$sankey$lane4, 
+                      lane.4.order = lane.4.order,
+                      fill.lane = params$sankey$lane.fill)
 
 print(sankey.output$sankey.plot)
-  
-# Investigate fields for collinearity 
-sankey.output.check <- plot_sankey(object = init.object, 
-                      lane.1 = "class", 
-                      lane.1.order = c("DKD", "normal"),
-                      lane.2 = "region", 
-                      lane.2.order = c("glomerulus", 
-                                       "tubule"), 
-                      lane.3 = "pathology", 
-                      lane.3.order = c("abnormal", "normal", "NA"), 
-                      lane.4 = "segment", 
-                      lane.4.order = c("GeometricSegment", 
-                                       "PanCK_pos", 
-                                       "PanCK_neg"),
-                      fill.lane = "region")
 
+## TO DO
+## Add field combination for colinearity reduction
 
-print(sankey.output.check$sankey.plot)
-
-# Combine columns to fix collinearity
 pData(init.object)$combined_coll_annotations <- paste0(pData(init.object)$region, 
                                                        "_", 
                                                        pData(init.object)$pathology, 
                                                        "_", 
                                                        pData(init.object)$segment)
-
-# Check corrected collinearity
-sankey.output.corrected <- plot_sankey(object = init.object, 
-                                       lane.1 = "slide", 
-                                       lane.1.order = unique(pData(init.object)$slide),
-                                       lane.2 = "class", 
-                                       lane.2.order = c("DKD", "normal"), 
-                                       lane.3 = "combined_coll_annotations", 
-                                       lane.3.order = unique(pData(init.object)$combined_coll_annotations), 
-                                       lane.4 = "pathology", 
-                                       lane.4.order = c("abnormal", "NA", "normal"), 
-                                       fill.lane = "class")
-
-print(sankey.output.corrected$sankey.plot)
 ```
 
 @fig-aoibarplot shows the total AOI counts per annotation
@@ -293,7 +293,7 @@ standr.input.list$features <- standr.input.list$features %>%
 
 
 
-export <- TRUE
+export <- FALSE
 if(export){
   
   write.table(standr.input.list$annotation, 
@@ -348,11 +348,8 @@ spatial.object.standr <- readGeoMx(count.file,
 
 ```{r}
 
-# Check for collinearity, all fields should have values independent of any other fields
-# Example, if all AOIs with class A have region interior and all AOIs with class B have region exterior, create a combined class|region field
-
 # Sample fraction is the fraction of all AOIs a gene is found below the min count
-# Counts are converted to logCPM before sample fractiopn evaluation
+# Counts are converted to logCPM before sample fraction evaluation
 min.count <- 5
 
 spatial.object.standr.gene.QC <- addPerROIQC(spatial.object.standr, 
@@ -374,8 +371,8 @@ genes.removed.df <- data.frame(gene = genes.removed.from.qc)
 
 # A plot to show gene expression relative to the min count threshold
 gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC, 
-                           ordannots = "slide_name", 
-                           col = slide_name, 
+                           ordannots = qc.plot.batch.field, 
+                           col = !!sym(qc.plot.batch.field), 
                            point_size = 2)
 
 
@@ -385,12 +382,25 @@ gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC,
 
 ```{r}
 
-# Check the library size cutoff versusthe overall AOI distribution
+# Check the library size cutoff versus the overall AOI distribution
 lib.size.cutoff = 50000
-roi.qc.plot <- plotROIQC(spatial.object.standr.gene.QC, 
+
+if("nuclei" %in% annotation.df){
+  
+  roi.qc.plot <- plotROIQC(spatial.object.standr.gene.QC, 
                          y_threshold = lib.size.cutoff, 
-                         col = slide_name, 
+                         col = !!sym(qc.plot.batch.field), 
                          x_axis = "nuclei")
+  
+} else {
+  
+  roi.qc.plot <- plotROIQC(spatial.object.standr.gene.QC, 
+                         y_threshold = lib.size.cutoff, 
+                         col = !!sym(qc.plot.batch.field), 
+                         x_axis = "roi")
+  
+}
+
 
 # Remove all ROIs velow the lib size cutoff
 spatial.object.standr.aoi.QC <- spatial.object.standr.gene.QC[,rownames(colData(spatial.object.standr.gene.QC))[colData(spatial.object.standr.gene.QC)$lib_size > 50000]]
@@ -416,8 +426,8 @@ spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, meth
 
 # Run RUV on non-Normalized data
 spatial.object.standr.ruv <- findNCGs(spatial.object.standr.aoi.QC, 
-                                             batch_name = "slide_name", 
-                                             top_n = 200)
+                                      batch_name = "slide_name", 
+                                      top_n = 200)
 
 
 
@@ -795,7 +805,7 @@ loq.detection.output.aoi.filtered <- loq_detection(object = object.aoi.filtered,
 #| warning: false
 
 gene.detection <- gene_detection(object = loq.detection.output.aoi.filtered$object, 
-                                    facet.column = "region", 
+                                    facet.column = qc.plot.bio.field.1, 
                                     loq.mat = loq.detection.output.aoi.filtered$loq.matrix)
 
 print(gene.detection$total.plot)
@@ -934,7 +944,7 @@ if(write.qc.file == TRUE){
 #| warning: false
 
 plot.distribution <- plot_distribution(object = object.gene.filtered, 
-                                       facet.annotation = "region")
+                                       facet.annotation = qc.plot.bio.field.1)
 
 print(plot.distribution$distr.plots)
 
@@ -950,17 +960,20 @@ print(plot.distribution$distr.plots)
 # Plot the number of nuclei per ROI for an annotation of interest
 object <- object.gene.filtered
 
-annotation <- pData(object.gene.filtered)
+annotation.df <- pData(object.gene.filtered)
 
-nuclei.plot <- nuclei_plot(annotation = annotation, 
-                           color = "region", 
-                           facet = "class", 
+if("nuclei" %in% colnames(annotation.df)){
+  
+  nuclei.plot <- nuclei_plot(annotation = annotation.df, 
+                           color = qc.plot.bio.field.2, 
+                           facet = qc.plot.bio.field.1, 
                            x.axis = "segmentID", 
                            order.by.ROI.num = FALSE, 
                            x.axis.label.shown = FALSE)
-
-print(nuclei.plot)
-
+  
+  print(nuclei.plot)
+  
+}
 ```
 
 ### Normalization
@@ -1053,8 +1066,8 @@ quantile.log.counts <- log2(quantile.normalization.counts + 1)
 # Annotation
 annotation <- pData(q3.normalization.output$object)
 
-# Annotation to groupo by
-annotation.facet <- "slide_name"
+# Annotation to group by
+annotation.facet <- qc.plot.batch.field
 
 # The ammount to subsample, with 1 being no subsampling
 subsample.ammount <- 0.2
@@ -1106,7 +1119,7 @@ ruv.counts <- standr.counts.list$ruv_corrected
 annotation <- standr.aoi.annotation
 
 # Annotation to groupo by
-annotation.facet <- "slide_name"
+annotation.facet <- qc.plot.batch.field
 
 # The ammount to subsample, with 1 being no subsampling
 subsample.ammount <- 0.2
