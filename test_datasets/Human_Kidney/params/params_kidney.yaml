@@ -1,0 +1,113 @@
+# ---------------------------------------------------------------------------
+# Pipeline parameters for DSP QC and filtering script
+# ---------------------------------------------------------------------------
+# Edit the values below, then run the pipeline with:
+#   Rscript run_pipeline.R params.yaml
+#
+# All folder paths should end with a trailing slash "/" since the script
+# builds file paths with paste0(params$data.folder, filename).
+# ---------------------------------------------------------------------------
+
+run.params:
+    # Run standr with a range of k values to evaluate the best k for normalization
+    k.eval: true
+    # An RDS for each step, QC plots, and normalized
+    export.qc: false
+    # Export the normalized counts for each method type
+    export.counts: false
+
+paths:
+    dsp.analysis.folder: "/Users/cauleyes/CPTR/DSP_Analysis/"
+    data.folder: "test_datasets/Human_Kidney/"
+    results.folder: "test_datasets/Human_Kidney/"
+    run.folder: "qc_report/"
+    dataset.name: "human_kidney_test"
+
+initialization:
+  pkc.file.name: "TAP_H_WTA_v1.0.pkc"
+  pkc.file.path: "test_datasets/Human_Kidney/TAP_H_WTA_v1.0.pkc"
+  annotation.file.name: "test_annotation_kidney.xlsx"
+  annotation.file.path: "test_datasets/Human_Kidney/test_annotation_kidney.xlsx"
+  dcc.folder: "downloaded/dccs/"
+  annotation.sheet.name: "Template"
+  sample.id.field.name: "Sample_ID"
+  roi.field.name: "roi"
+  panel.field.name: "panel"
+  class.field.name: "class"
+  region.field.name: "region"
+  segment.field.name: "segment"
+  area.field.name: "area"
+  nuclei.field.name: "nuclei"
+  exclude.sankey: false
+  segment.id.length: 8
+  export: false
+
+# Sankey Plot Parameters
+# Put []"default"] for lane order if you want to use abc order
+sankey:
+    lane.1: "slide_name"
+    lane.1.order: ["disease3", "disease4", "normal3", "normal4", "disease1B", "disease2B", "normal2B"]
+    lane.2: "class"
+    lane.2.order: ["DKD", "normal"]
+    lane.3: "region"
+    lane.3.order: ["glomerulus", "tubule"]
+    lane.4: "segment"
+    lane.4.order: ["GeometricSegment", "PanCK_pos", "PanCK_neg"]
+    lane.fill: "region"
+    # Combine columns to address colinearity
+    combine.cols: true
+    cols.to.combine: ["region", "pathology",  "segment"]
+
+# Initial QC for all AOIs, export.standr is the input for standr QC
+qc: 
+    min.segment.reads: 1000 
+    percent.trimmed: 80  
+    percent.stitched: 80  
+    percent.aligned: 80 
+    percent.saturation: 50
+    min.negative.count: 1.5
+    max.ntc.count: 10000  
+    min.nuclei: 50       
+    min.area: 1000 
+    # The input for standr filtering
+    export.standr: true
+    qc.plot.bio.field.1: "combined_column"
+    qc.plot.bio.field.2: "class"
+    qc.plot.batch.field: "slide_name"
+    goi: ["A2M", "CD44"]
+
+standr.filtering: 
+    gene.filter: 
+        # Sample fraction is the fraction of all AOIs a gene is found below the min count
+        # Counts are converted to logCPM before sample fraction evaluation
+        min.count: 5
+        sample.fraction: 0.9
+    aoi.filter:
+        lib.size: 50000
+
+default.filtering: 
+    # The percentage of AOIs a gene is detected in to be included in the analysis
+    gene.detection.cutoff: 5
+    # The percentage of genes an AOI must have detected to be included in the analysis
+    aoi.detection.cutoff: 5
+
+
+standr.normalization:
+    batch.field: "slide_name"
+    # The number of least variable genes to use a controls
+    top.n: 200
+    # Fields that represent the biological factors of interest
+    bio.fields: ["combined_column", "class"]
+    # The best k value for normalization, if best.k.chosen is true, this will be used for normalization
+    best.k: 2
+
+default.normalization:
+    export.normalized.counts: false
+
+
+
+
+
+
+
+

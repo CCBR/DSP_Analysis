@@ -6,12 +6,94 @@ format:
 editor: visual
 #css: "qc_report_style.css"
 
-params:
-  dsp.analysis.folder: "/Users/cauleyes/CPTR/DSP_Analysis/"
-  data.folder: "test_datasets/Human_Kidney/"
-  results.folder: "test_datasets/Human_Kidney/"
-  run.folder: "qc_report/"
-  dataset.name: "human_kidney_test"
+run.params:
+    # Run standr with a range of k values to evaluate the best k for normalization
+    k.eval: true
+    # An RDS for each step, QC plots, and normalized
+    export.qc: false
+    # Export the normalized counts for each method type
+    export.counts: false
+
+paths:
+    dsp.analysis.folder: "/Users/cauleyes/CPTR/DSP_Analysis/"
+    data.folder: "test_datasets/Human_Kidney/"
+    results.folder: "test_datasets/Human_Kidney/"
+    run.folder: "qc_report/"
+    dataset.name: "human_kidney_test"
+
+initialization:
+  pkc.file.name: "TAP_H_WTA_v1.0.pkc"
+  pkc.file.path: "test_datasets/Human_Kidney/TAP_H_WTA_v1.0.pkc"
+  annotation.file.name: "test_annotation_kidney.xlsx"
+  annotation.file.path: "test_datasets/Human_Kidney/test_annotation_kidney.xlsx"
+  dcc.folder: "downloaded/dcc_files/"
+  annotation.sheet.name: "Template"
+  sample.id.field.name: "Sample_ID"
+  roi.field.name: "roi"
+  panel.field.name: "panel"
+  class.field.name: "class"
+  region.field.name: "region"
+  segment.field.name: "segment"
+  area.field.name: "area"
+  nuclei.field.name: "nuclei"
+  exclude.sankey: false
+  segment.id.length: 8
+  export: false
+
+# Sankey Plot Parameters
+# Put "default" for lane order if you want to use the default order
+sankey:
+    lane1: "slide"
+    lane1.order: ["Slide1", "Slide2", "Slide3"]
+    lane2: "class"
+    lane2.order: ["Normal", "Tumor"]
+    lane3: "region"
+    lane3.order: ["Cortex", "Medulla"]
+    lane4: "segment"
+    lane4.order: ["Segment1", "Segment2", "Segment3"]
+    lane.fill: "region"
+
+# Initial QC for all AOIs, export.standr is the input for standr QC
+qc: 
+    min.segment.reads: 1000 
+    percent.trimmed: 80  
+    percent.stitched: 80  
+    percent.aligned: 80 
+    percent.saturation: 50
+    min.negative.count: 1.5
+    max.ntc.count: 10000  
+    min.nuclei: 50       
+    min.area: 1000 
+    # The input for standr filtering
+    export.standr: true
+
+standr.filtering: 
+    gene.filter: 
+        # Sample fraction is the fraction of all AOIs a gene is found below the min count
+        # Counts are converted to logCPM before sample fraction evaluation
+        min.count: 5
+        sample.fraction: 0.9
+    aoi.filter:
+        lib.size: 50000
+
+default.filtering: 
+    # The percentage of AOIs a gene is detected in to be included in the analysis
+    gene.detection.cutoff: 5
+    # The percentage of genes an AOI must have detected to be included in the analysis
+    aoi.detection.cutoff: 5
+
+
+standr.normalization:
+    batch.field: "slide_name"
+    # The number of least variable genes to use a controls
+    top.n: 200
+    # Fields that represent the biological factors of interest
+    bio.fields: ["combined_column", "class"]
+    # The best k value for normalization, if best.k.chosen is true, this will be used for normalization
+    best.k: 2
+
+default.normalization:
+    export.normalized.counts: false
 ---
 
 ## Load Libraries
@@ -21,8 +103,6 @@ params:
 #| message: false
 
 # Load all relevant libraries
-
-library(yaml)
 library(DSPWorkflow)
 library(GeomxTools)
 library(dplyr)
@@ -52,6 +132,10 @@ library(ggthemes)
 library(scales)
 
 source("DSP_QC_functions.R")
+
+
+# For interactive runs
+params <- yaml::read_yaml("test_datasets/Human_Kidney/params/params_kidney.yaml")
 ```
 
 ## Initialization
@@ -60,46 +144,32 @@ source("DSP_QC_functions.R")
 
 # Input file parameters
 
-pkc.file.name <- "TAP_H_WTA_v1.0.pkc"
-pkc.file.path <- paste0(params$data.folder, pkc.file.name)
+pkc.file.name <- params$initialization$pkc.file.name
+pkc.file.path <- paste0(params$paths$data.folder, pkc.file.name)
 
 annotation.file.name <- "test_annotation_kidney.xlsx"
-annotation.file.path <- paste0(params$data.folder, annotation.file.name)
+annotation.file.path <- paste0(params$paths$data.folder, annotation.file.name)
 
-dcc.files <- list.files(file.path(paste0(params$data.folder, "downloaded/dccs")),
+dcc.files <- list.files(file.path(paste0(params$paths$data.folder, params$initialization$dcc.folder)),
   pattern = ".dcc$",
   full.names = TRUE,
   recursive = TRUE
 )
 
-# Annotation parameters
-annotation.sheet.name <- "Template"
-sample.id.field.name <- "Sample_ID"
-roi.field.name <- "roi"
-panel.field.name <- "panel"
-class.field.name <- "class"
-region.field.name <- "region"
-segment.field.name <- "segment"
-area.field.name <- "area"
-nuclei.field.name <- "nuclei"
-exclude.sankey <- FALSE
-segment.id.length <- 8
-
 # Create the GeoMxSet Object
-
 init.object <- initialize_object(dcc.files = dcc.files,
                             pkc.files = pkc.file.path,
                             annotation.file = annotation.file.path,
-                            annotation.sheet.name = annotation.sheet.name,
-                            sample.id.field.name = sample.id.field.name,
-                            roi.field.name = roi.field.name,
-                            panel.field.name = panel.field.name, 
-                            class.field.name = class.field.name, 
-                            region.field.name = region.field.name, 
-                            segment.field.name = segment.field.name,
-                            area.field.name = area.field.name,
-                            nuclei.field.name = nuclei.field.name, 
-                            segment.id.length = segment.id.length)
+                            annotation.sheet.name = params$initialization$annotation.sheet.name,
+                            sample.id.field.name = params$initialization$sample.id.field.name,
+                            roi.field.name = params$initialization$roi.field.name,
+                            panel.field.name = params$initialization$panel.field.name, 
+                            class.field.name = params$initialization$class.field.name, 
+                            region.field.name = params$initialization$region.field.name, 
+                            segment.field.name = params$initialization$segment.field.name,
+                            area.field.name = params$initialization$area.field.name,
+                            nuclei.field.name = params$initialization$nuclei.field.name, 
+                            segment.id.length = params$initialization$segment.id.length)
 
 
 # Establish fields of interest for QC plots
@@ -107,12 +177,11 @@ qc.plot.bio.field.1 <- params$qc$qc.plot.bio.field.1
 qc.plot.bio.field.2 <- params$qc$qc.plot.bio.field.2
 qc.plot.batch.field <- params$qc$qc.plot.batch.field
 
-export <- FALSE
-if(export){
+if(params$initialization$export){
   
   # Save the whole object
   saveRDS(init.object, 
-          file = paste0(params$results.folder, params$dataset.name, "_preQC_object.RDS"))
+          file = paste0(params$paths$results.folder, params$paths$dataset.name, "_preQC_object.RDS"))
   
   ## Save the counts ##
   preQC.counts <- init.object@assayData$exprs
@@ -127,13 +196,13 @@ if(export){
                                 by = "RTS_ID")
   
   saveRDS(pre.QC.counts.mapped, 
-          file = paste0(params$results.folder, params$dataset.name, "_preQC_counts.RDS"))
+          file = paste0(params$paths$results.folder, params$paths$dataset.name, "_preQC_counts.RDS"))
   
   ## Save the annotation ##
   preQC.annotation <- pData(init.object)
   
   saveRDS(pre.QC.counts.mapped, 
-          file = paste0(params$results.folder, params$dataset.name, "_preQC_counts.RDS"))
+          file = paste0(params$paths$results.folder, params$paths$dataset.name, "_preQC_counts.RDS"))
   
 }
 
@@ -157,52 +226,58 @@ init.annotation.df <- pData(init.object)
 
 # Establish the order of values in each lane
 # Lane 1
-if(params$lane.1.order == "default"){
-  lane.1.order <- unique(init.annotation.df[[params$sankey$lane1]])
+if("default" %in% params$sankey$lane.1.order){
+  lane.1.order <- unique(init.annotation.df[[params$sankey$lane.1]])
 } else {
   lane.1.order <- params$sankey$lane.1.order
 }
 # Lane 2
-if(params$lane.2.order == "default"){
-  lane.2.order <- unique(init.annotation.df[[params$sankey$lane2]])
+if("default" %in% params$sankey$lane.2.order){
+  lane.2.order <- unique(init.annotation.df[[params$sankey$lane.2]])
 } else {
   lane.2.order <- params$sankey$lane.2.order
 }
 # Lane 3
-if(params$lane.3.order == "default"){
-  lane.3.order <- unique(init.annotation.df[[params$sankey$lane3]])
+if("default" %in% params$sankey$lane.3.order){
+  lane.3.order <- unique(init.annotation.df[[params$sankey$lane.3]])
 } else {
   lane.3.order <- params$sankey$lane.3.order
 }
 # Lane 4
-if(params$lane.1.order == "default"){
-  lane.4.order <- unique(init.annotation.df[[params$sankey$lane4]])
+if("default" %in% params$sankey$lane.4.order){
+  lane.4.order <- unique(init.annotation.df[[params$sankey$lane.4]])
 } else {
   lane.4.order <- params$sankey$lane.4.order
 }
 
 # Plot the default fields
 sankey.output <- plot_sankey(object = init.object, 
-                      lane.1 = params$sankey$lane1, 
+                      lane.1 = params$sankey$lane.1, 
                       lane.1.order = lane.1.order,
-                      lane.2 = params$sankey$lane2, 
+                      lane.2 = params$sankey$lane.2, 
                       lane.2.order = lane.2.order,
-                      lane.3 = params$sankey$lane3, 
+                      lane.3 = params$sankey$lane.3, 
                       lane.3.order = lane.3.order, 
-                      lane.4 = params$sankey$lane4, 
+                      lane.4 = params$sankey$lane.4, 
                       lane.4.order = lane.4.order,
                       fill.lane = params$sankey$lane.fill)
 
+
+# Create a new combined column to use that address to the colinearity
+if(params$sankey$combine.cols){
+  
+  pData(init.object) <- pData(init.object) %>%
+  unite("combined_column", 
+        all_of(params$sankey$cols.to.combine), 
+        sep = "_", 
+        remove = FALSE)
+  
+}
+
 print(sankey.output$sankey.plot)
+print("Check for colinear fields of interest. Create a combined field for any colinear fields.")
 
-## TO DO
-## Add field combination for colinearity reduction
 
-pData(init.object)$combined_coll_annotations <- paste0(pData(init.object)$region, 
-                                                       "_", 
-                                                       pData(init.object)$pathology, 
-                                                       "_", 
-                                                       pData(init.object)$segment)
 ```
 
 @fig-aoibarplot shows the total AOI counts per annotation
@@ -221,28 +296,28 @@ print(sankey.output$AOI.bar.plot)
 
 
 qc.output <-  qcProc(object = init.object,
-                        min.segment.reads = 1000, 
-                        percent.trimmed = 80,    
-                        percent.stitched = 80,   
-                        percent.aligned = 80,    
-                        percent.saturation = 50, 
-                        min.negative.count = 1.5,   
-                        max.ntc.count = 10000,     
-                        min.nuclei = 50,         
-                        min.area = 1000,
+                        min.segment.reads = params$qc$min.segment.reads, 
+                        percent.trimmed = params$qc$percent.trimmed,    
+                        percent.stitched = params$qc$percent.stitched,   
+                        percent.aligned = params$qc$percent.aligned,    
+                        percent.saturation = params$qc$percent.saturation, 
+                        min.negative.count = params$qc$min.negative.count,   
+                        max.ntc.count = params$qc$max.ntc.count,     
+                        min.nuclei = params$qc$min.nuclei,         
+                        min.area = params$qc$min.area,
                         print.plots = FALSE)
 
 # Create the input for standR
 qc.output.standr <-  qcProc(object = init.object,
-                        min.segment.reads = 1000, 
-                        percent.trimmed = 80,    
-                        percent.stitched = 80,   
-                        percent.aligned = 80,    
-                        percent.saturation = 50, 
-                        min.negative.count = 1,   
-                        max.ntc.count = 10000,     
-                        min.nuclei = 1,         
-                        min.area = 1000,
+                        min.segment.reads = params$qc$min.segment.reads, 
+                        percent.trimmed = params$qc$percent.trimmed,    
+                        percent.stitched = params$qc$percent.stitched,   
+                        percent.aligned = params$qc$percent.aligned,    
+                        percent.saturation = params$qc$percent.saturation, 
+                        min.negative.count = 1, # Set to lowest threshold so it is not used
+                        max.ntc.count = 20000, # Set to lowest threshold so it is not used   
+                        min.nuclei = 1, # Set to lowest threshold so it is not used    
+                        min.area = 1, # Set to lowest threshold so it is not used
                         print.plots = FALSE)
 
 # Export Counts and Annotation
@@ -291,27 +366,24 @@ standr.input.list$features <- as.data.frame(fData(qc.output.standr$object))
 standr.input.list$features <- standr.input.list$features %>% 
   select(TargetName, CodeClass, GeneID)
 
-
-
-export <- FALSE
-if(export){
+if(params$qc$export.standr){
   
   write.table(standr.input.list$annotation, 
-            file = paste0(params$data.folder, 
+            file = paste0(params$paths$data.folder, 
                           "StandR/input_files/standr_input_anno.tsv"), 
             row.names = FALSE, 
             sep = "\t", 
             quote = FALSE)
   
   write.table(standr.input.list$counts, 
-            file = paste0(params$data.folder, 
+            file = paste0(params$paths$data.folder, 
                           "StandR/input_files/standr_input_counts.tsv"), 
             row.names = FALSE, 
             sep = "\t", 
             quote = FALSE)
   
   write.table(standr.input.list$features, 
-            file = paste0(params$data.folder, 
+            file = paste0(params$paths$data.folder, 
                           "StandR/input_files/standr_input_features.tsv"), 
             row.names = FALSE, 
             sep = "\t", 
@@ -329,11 +401,11 @@ if(export){
 
 ```{r}
 
-count.file <- paste0(params$data.folder, 
+count.file <- paste0(params$paths$data.folder, 
                           "StandR/input_files/standr_input_counts.tsv")
-anno.file <- paste0(params$data.folder, 
+anno.file <- paste0(params$paths$data.folder, 
                           "StandR/input_files/standr_input_anno.tsv")
-feature.file <- paste0(params$data.folder, 
+feature.file <- paste0(params$paths$data.folder, 
                           "StandR/input_files/standr_input_features.tsv")
 
 spatial.object.standr <- readGeoMx(count.file, 
@@ -383,9 +455,9 @@ gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC,
 ```{r}
 
 # Check the library size cutoff versus the overall AOI distribution
-lib.size.cutoff = 50000
+lib.size.cutoff = params$standr.standr.filtering$aoi.filter$lib.size
 
-if("nuclei" %in% annotation.df){
+if("nuclei" %in% names(colData(spatial.object.standr.gene.QC))){
   
   roi.qc.plot <- plotROIQC(spatial.object.standr.gene.QC, 
                          y_threshold = lib.size.cutoff, 
@@ -402,7 +474,7 @@ if("nuclei" %in% annotation.df){
 }
 
 
-# Remove all ROIs velow the lib size cutoff
+# Remove all ROIs below the lib size cutoff
 spatial.object.standr.aoi.QC <- spatial.object.standr.gene.QC[,rownames(colData(spatial.object.standr.gene.QC))[colData(spatial.object.standr.gene.QC)$lib_size > 50000]]
 
 aois.before.qc <- colnames(spatial.object.standr.gene.QC)
@@ -420,14 +492,13 @@ cat("AOIs removed", "\n", aois.removed.from.qc)
 #### Apply Normalization and Batch Correction
 
 ```{r}
-
 # Apply Normalization for Evaluation
 spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, method = "TMM")
 
 # Run RUV on non-Normalized data
 spatial.object.standr.ruv <- findNCGs(spatial.object.standr.aoi.QC, 
-                                      batch_name = "slide_name", 
-                                      top_n = 200)
+                                      batch_name = params$standr.normalization$batch.field, 
+                                      top_n = params$standr.normalization$top.n)
 
 
 
@@ -468,7 +539,7 @@ log.cpm.means <- rowMeans(log.cpm.counts[ncg.genes,])
 
 var.means.plot <- plot(log.cpm.means, var.ncg, pch = 16, cex = 0.5)
 
-experimental.fields <- c("combined_coll_annotations", "class")
+experimental.fields <- params$standr.normalization$bio.fields
 
 spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.ruv, 
                                 factors = experimental.fields, 
@@ -490,6 +561,7 @@ standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
 ### RUV K Comparison
 
 ```{r}
+#| eval: !expr params$run.params$k.eval
 
 pca.plot.list <- list()
 
@@ -509,7 +581,7 @@ batch.stats.df <- data.frame(
 )
 
 # Biological factor of interest
-bio.field <- "combined_coll_annotations"
+bio.field <- "combined_column"
 
 # Batch factor
 batch.field <- "slide_name"
@@ -641,6 +713,7 @@ print(best.k.comparison.plot)
 ### Export for DE Analysis
 
 ```{r Export StandR counts for DE}
+#| eval: !expr params$run.params$best.k.chosen
 
 # Export the inputs for DE Analysis
 
@@ -648,7 +721,7 @@ export = FALSE
 if(export){
   
   saveRDS(spatial.object.standr.final, 
-          file = paste0(params$data.folder, 
+          file = paste0(params$paths$data.folder, 
                         "StandR/standr_ruv_object.RDS"))
   
 }
@@ -684,13 +757,10 @@ qc.output$plot$neg.plot
 
 ```
 
-AOIs that have been flagged with the given QC parameters
-
-aoi.flag.table \<- aoi_flag_table(aoi.flags = qc.output\$segment.flags)
-
-print(aoi.flag.table)
 
 ```{r AOI Flags}
+
+#AOIs that have been flagged with the given QC parameters
 
 aoi.flag.table <- aoi_flag_table(aoi.flags = qc.output$segment.flags)
 
@@ -766,7 +836,7 @@ aoi.detection.summary <- pData(loq.detection.output$object) %>%
 #| message: false
 
 # Filter the data using the cutoff for gene detection rate
-aoi.gene.rate.cutoff <- 5
+aoi.gene.rate.cutoff <- params$default.filtering$gene.detection.cutoff
 
 object <- loq.detection.output$object
 
@@ -830,7 +900,7 @@ Gene detection rates for specified genes of interest
 #| warning: false
 
 # Gene of interest detection table
-goi <- c("A2M", "CD44")
+goi <- params$qc$goi
 
 goi.df <- data.frame(Gene = goi,
                      Number = fData(loq.detection.output.aoi.filtered$object)[goi, "DetectedSegments"],
@@ -874,7 +944,7 @@ gene.detection.summary <- fData(loq.detection.output.aoi.filtered$object) %>%
 #| message: false
 
 # Set the cutoff for gene detection (percentage)
-gene.detection.cutoff <- 5
+gene.detection.cutoff <- params$default.filtering$aoi.detection.cutoff
 
 # Manually include the negative control probe, for downstream use
 negative.probe.fData <- subset(fData(loq.detection.output.aoi.filtered$object), CodeClass == "Negative")
@@ -895,9 +965,7 @@ print(paste0(nrow(genes.filtered.out), " genes were filtered out of the GeoMxSet
 
 ```{r Write QC output}
 
-write.qc.file <- FALSE
-
-if(write.qc.file == TRUE){
+if(params$run.params$export.qc){
   
   # Start the QC output excel workbook
   qc.info.output <- createWorkbook()
@@ -929,7 +997,7 @@ if(write.qc.file == TRUE){
   writeData(qc.info.output, sheet = "StandR AOIs Removed", aois.removed.df)
   
   # Save the QC output file
-  saveWorkbook(qc.info.output, paste0(params$results.folder, params$run.folder, "QC_info.xlsx"), overwrite = TRUE)
+  saveWorkbook(qc.info.output, paste0(params$paths$results.folder, params$paths$run.folder, "QC_info.xlsx"), overwrite = TRUE)
   
 }
 
@@ -976,7 +1044,7 @@ if("nuclei" %in% colnames(annotation.df)){
 }
 ```
 
-### Normalization
+ ### Normalization
 
 ```{r Normalization, warning=FALSE, message=FALSE}
 
@@ -992,9 +1060,9 @@ neg.normalization.output <- DSPWorkflow::geomxNorm(
                                   object = object.gene.filtered, 
                                   norm = "neg")
 
-# Set up the mapping df for AOI IDs
-mapping.df.segmentID <- data.frame(sample_ID = rownames(annotation), 
-                         segmentID = annotation$segmentID)
+# Set up the mapping df for AOI IDss
+mapping.df.segmentID <- data.frame(sample_ID = rownames(annotation.df), 
+                         segmentID = annotation.df$segmentID)
 
 
 # Q3 normalization clean up
@@ -1023,10 +1091,7 @@ quantile.norm.reformat <- quantile.norm.reformat %>%
 # Replace the sampleID column names with human readable AOI ID
 colnames(quantile.norm.reformat)[match(mapping.df.segmentID$sample_ID, colnames(quantile.norm.reformat))] <- mapping.df.segmentID$segmentID
 
-
-
-export.norm.object <- FALSE
-if(export.norm.object == TRUE){
+if(params$default.normalization$export){
   
   quant.counts <- quantile.norm.reformat
   
@@ -1035,16 +1100,16 @@ if(export.norm.object == TRUE){
   annotation <- annotation %>% select(-loq)
   
   # Save the whole object for Q3 normalized counts
-  saveRDS(object, file = paste0(params$results.folder, 
-                             params$dataset.name, "_q3normalized_object.RDS"))
+  saveRDS(object, file = paste0(params$paths$results.folder, 
+                             params$paths$dataset.name, "_q3normalized_object.RDS"))
   
-  write.csv(q3.counts, file = paste0(params$results.folder, 
-                                  params$dataset.name, "_q3normalized_counts.csv"), 
+  write.csv(q3.counts, file = paste0(params$paths$results.folder, 
+                                  params$paths$dataset.name, "_q3normalized_counts.csv"), 
             row.names = FALSE)
   
   # Save the quantile normalized.counts
-  write.csv(quant.counts, file = paste0(params$results.folder, 
-                                  params$dataset.name, "_quantnormalized_counts.csv"), 
+  write.csv(quant.counts, file = paste0(params$paths$results.folder, 
+                                  params$paths$dataset.name, "_quantnormalized_counts.csv"), 
             row.names = FALSE)
   
 }   
@@ -1430,10 +1495,10 @@ print(standr.pca.slide)
 #| warning: false
 
 default.pca.comb <- PCA_biplots(pca.table.list = default.pca.list, 
-                                   color.group = "combined_coll_annotations")
+                                   color.group = "combined_column")
 
 standr.pca.comb <- PCA_biplots(pca.table.list = standr.pca.list, 
-                                   color.group = "combined_coll_annotations")
+                                   color.group = "combined_column")
 
 print(default.pca.comb)
 print(standr.pca.comb)
@@ -1467,7 +1532,7 @@ comparison.pca.list <- list(Q3 = default.pca.list$q3,
                             RUV = standr.pca.list$ruv)
 
 comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list, 
-                              color.group = "combined_coll_annotations", 
+                              color.group = "combined_column", 
                               show.loadings = FALSE)
 
 ```
@@ -1576,7 +1641,7 @@ if(export){
     
     pca.df <- pca.data.list[[pca.df.name]]
     
-    save(pca.df, file = paste0(params$results.folder, "pca/", 
+    save(pca.df, file = paste0(params$paths$results.folder, "pca/", 
                                pca.df.name, "_PCA.RDA"))
     
   }
