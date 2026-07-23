@@ -142,11 +142,212 @@ PCA:
         # Save the PCA tables
         export: false
     
+# ============================================================
+# Differential Expression (DE) Parameters
+# ============================================================
 
+de:
+  # Parameters shared across all comparisons below.
+  # Each comparison inherits these via the YAML anchor/merge key "<<: *common_de_params",
+  # then overrides only what's unique to that comparison.
+  #
+  # NOTE: YAML's "<<" merge only combines keys at the top level, unlike R's
+  # modifyList() which merges nested lists recursively. Because each comparison
+  # needs to override specific fields *within* the nested "standr" list
+  # (design.annotation, contrast.numerator, contrast.denominator) while keeping
+  # the rest of "standr" from common, each comparison's "standr" block is written
+  # out in full below rather than relying on merge to combine it.
+  common: &common_de_params
+    # DE methods to run. Options: "default", "standr", or both.
+    # When both are supplied, functions run default first, then standr.
+    de.method: ["default", "standr"]
 
+    # StandR defaults shared across comparisons
+    standr:
+      object.name: "standr.ruv.object"
+      covariates: ["ruv_W1", "ruv_W2"]
+      block.field: "slide_name"
+      filter.by.expr: true
+      estimate.disp.robust: true
+      ebayes.robust: true
+      plot.voom: false
+      sort.by: "P"
+      clean.design.names: true
+      print.design.columns: true
+      remove.batch.for.gsea: false
 
+    # Volcano parameters
+    fc.limit: 1
+    padj.limit: 0.05
+    n.labels: 10
 
+    write.results: true
+    overwrite.results: false
 
+    title.size: 22
+    legend.coordinates: [0.99, 0.1]
+    x.lab: "Log2 Fold Change"
+    y.lab: "-Log10 adjusted p-value"
+    dotted.line.color: "black"
+    alpha: 1
+    nonDE.color: "gray60"
+    upDE.color: "red"
+    downDE.color: "blue"
+    label.size: 8
+    nolabel.label.size: 4
+    label.color: "black"
+    axis.tick.label.size: 20
+    legend.text.size: 20
+    axis.title.size: 20
 
+    volcano.width: 14
+    volcano.height: 10
 
+    label.top.genes: false
+    make.nolabel.volcano: false
 
+    export.volcano: false
+    export.volcano.nolabel: false
+    export.gsea.input: false
+
+  # Individual comparisons with unique parameters
+  comparisons:
+
+    - <<: *common_de_params
+      contrast.name: "DKD_Tubule_panck_pos_vs_neg"
+      heading: "DKD Tubule PanCK Pos vs. Neg"
+
+      overwrite.results: false
+
+      subset.group.1:
+        class: ["DKD"]
+        region: ["tubule"]
+        segment: ["PanCK_pos"]
+
+      subset.group.2:
+        class: ["DKD"]
+        region: ["tubule"]
+        segment: ["PanCK_neg"]
+
+      # Default DSPWorkflow diffExpr parameters
+      analysis.type: "Within Groups"
+      region.col: "segment"
+      regions: ["PanCK_pos", "PanCK_neg"]
+      group.col: "region"
+      groups: ["tubule"]
+      legend.title: "Expression in PanCK+"
+
+      # StandR parameters (common defaults + comparison-specific contrast fields)
+      standr:
+        object.name: "standr.ruv.object"
+        covariates: ["ruv_W1", "ruv_W2"]
+        block.field: "slide_name"
+        filter.by.expr: true
+        estimate.disp.robust: true
+        ebayes.robust: true
+        plot.voom: false
+        sort.by: "P"
+        clean.design.names: true
+        print.design.columns: true
+        remove.batch.for.gsea: false
+        design.annotation: "segment"
+        contrast.numerator: "PanCK_pos"
+        contrast.denominator: "PanCK_neg"
+
+      # Volcano plot
+      volcano.title: "DKD Tubule - PanCK Pos vs. Neg"
+      label.top.genes: false
+
+      # GSEA
+      gsea.contrast.field: "segment"
+      gsea.contrast.levels: ["PanCK_pos", "PanCK_neg"]
+
+    - <<: *common_de_params
+      contrast.name: "Glomerulus_DKD_vs_Normal"
+      heading: "Glomerulus DKD vs Normal"
+
+      subset.group.1:
+        class: ["DKD"]
+        region: ["glomerulus"]
+
+      subset.group.2:
+        class: ["normal"]
+        region: ["glomerulus"]
+
+      # Default DSPWorkflow diffExpr parameters
+      analysis.type: "Between Groups"
+      region.col: "region"
+      regions: ["glomerulus"]
+      group.col: "class"
+      groups: ["DKD", "normal"]
+      legend.title: "Expression in DKD"
+
+      # For DKD vs normal, the design annotation should be class.
+      standr:
+        object.name: "standr.ruv.object"
+        covariates: ["ruv_W1", "ruv_W2"]
+        block.field: "slide_name"
+        filter.by.expr: true
+        estimate.disp.robust: true
+        ebayes.robust: true
+        plot.voom: false
+        sort.by: "P"
+        clean.design.names: true
+        print.design.columns: true
+        remove.batch.for.gsea: false
+        design.annotation: "class"
+        contrast.numerator: "DKD"
+        contrast.denominator: "normal"
+
+      # Volcano plot
+      volcano.title: "Glomerulus DKD vs. Normal"
+      label.top.genes: false
+
+      # GSEA
+      gsea.contrast.field: "class"
+      gsea.contrast.levels: ["DKD", "normal"]
+
+    - <<: *common_de_params
+      contrast.name: "DKD_Glomerulus_vs_Tubule"
+      heading: "DKD Glomerulus vs Tubule"
+
+      subset.group.1:
+        class: ["DKD"]
+        region: ["glomerulus", "tubule"]
+
+      subset.group.2:
+        class: ["DKD"]
+        region: ["glomerulus", "tubule"]
+
+      # Default DSPWorkflow diffExpr parameters
+      analysis.type: "Within Groups"
+      region.col: "region"
+      regions: ["glomerulus", "tubule"]
+      group.col: "class"
+      groups: ["DKD"]
+      legend.title: "Expression in Glomerulus"
+
+      # For glomerulus vs tubule, the design annotation should be region.
+      standr:
+        object.name: "standr.ruv.object"
+        covariates: ["ruv_W1", "ruv_W2"]
+        block.field: "slide_name"
+        filter.by.expr: true
+        estimate.disp.robust: true
+        ebayes.robust: true
+        plot.voom: false
+        sort.by: "P"
+        clean.design.names: true
+        print.design.columns: true
+        remove.batch.for.gsea: false
+        design.annotation: "region"
+        contrast.numerator: "glomerulus"
+        contrast.denominator: "tubule"
+
+      # Volcano plot
+      volcano.title: "DKD Glomerulus vs. Tubule"
+      label.top.genes: false
+
+      # GSEA
+      gsea.contrast.field: "region"
+      gsea.contrast.levels: ["glomerulus", "tubule"]
