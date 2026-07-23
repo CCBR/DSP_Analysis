@@ -8,6 +8,12 @@
 # builds file paths with paste0(params$data.folder, filename).
 # ---------------------------------------------------------------------------
 
+title: "DSP Analysis QC Report Template"
+format:
+  html:
+    code-fold: true
+    embed-resources: true
+
 run.params:
     # Run standr with a range of k values to evaluate the best k for normalization
     k.eval: true
@@ -103,6 +109,39 @@ standr.normalization:
 
 default.normalization:
     export.normalized.counts: false
+
+MA: 
+    # The field to use for comparison. The levels are in the order condition, reference
+    contrast.field: "region"
+    contrast.levels: ["glomerulus", "tubule"]
+
+PCA: 
+    plots:
+        dataset.field: "pathology"
+    subset:
+    # Create PCA tables for each of the subsets defined below
+        All:
+            class:
+                - DKD  
+                - normal
+        DKD:
+            class:
+                - DKD
+        Normal:
+            class:
+                - normal
+        Glomerulus:
+            region:
+                - glomerulus
+        Tubule:
+            region:
+                - tubule
+        Abnormal_Glomerulus:
+            region: glomerulus
+            pathology: abnormal
+        # Save the PCA tables
+        export: false
+    
 
 
 
