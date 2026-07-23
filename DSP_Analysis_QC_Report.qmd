@@ -3,8 +3,7 @@ title: "DSP Analysis QC Report Template"
 format:
   html:
     code-fold: true
-editor: visual
-#css: "qc_report_style.css"
+    embed-resources: true
 
 run.params:
     # Run standr with a range of k values to evaluate the best k for normalization
@@ -26,7 +25,7 @@ initialization:
   pkc.file.path: "test_datasets/Human_Kidney/TAP_H_WTA_v1.0.pkc"
   annotation.file.name: "test_annotation_kidney.xlsx"
   annotation.file.path: "test_datasets/Human_Kidney/test_annotation_kidney.xlsx"
-  dcc.folder: "downloaded/dcc_files/"
+  dcc.folder: "downloaded/dccs/"
   annotation.sheet.name: "Template"
   sample.id.field.name: "Sample_ID"
   roi.field.name: "roi"
@@ -41,17 +40,20 @@ initialization:
   export: false
 
 # Sankey Plot Parameters
-# Put "default" for lane order if you want to use the default order
+# Put []"default"] for lane order if you want to use abc order
 sankey:
-    lane1: "slide"
-    lane1.order: ["Slide1", "Slide2", "Slide3"]
-    lane2: "class"
-    lane2.order: ["Normal", "Tumor"]
-    lane3: "region"
-    lane3.order: ["Cortex", "Medulla"]
-    lane4: "segment"
-    lane4.order: ["Segment1", "Segment2", "Segment3"]
+    lane.1: "slide_name"
+    lane.1.order: ["disease3", "disease4", "normal3", "normal4", "disease1B", "disease2B", "normal2B"]
+    lane.2: "class"
+    lane.2.order: ["DKD", "normal"]
+    lane.3: "region"
+    lane.3.order: ["glomerulus", "tubule"]
+    lane.4: "segment"
+    lane.4.order: ["GeometricSegment", "PanCK_pos", "PanCK_neg"]
     lane.fill: "region"
+    # Combine columns to address colinearity
+    combine.cols: true
+    cols.to.combine: ["region", "pathology",  "segment"]
 
 # Initial QC for all AOIs, export.standr is the input for standr QC
 qc: 
@@ -66,6 +68,10 @@ qc:
     min.area: 1000 
     # The input for standr filtering
     export.standr: true
+    qc.plot.bio.field.1: "combined_column"
+    qc.plot.bio.field.2: "class"
+    qc.plot.batch.field: "slide_name"
+    goi: ["A2M", "CD44"]
 
 standr.filtering: 
     gene.filter: 
@@ -94,6 +100,38 @@ standr.normalization:
 
 default.normalization:
     export.normalized.counts: false
+
+MA: 
+    # The field to use for comparison. The levels are in the order condition, reference
+    contrast.field: "region"
+    contrast.levels: ["glomerulus", "tubule"]
+
+PCA: 
+    plots:
+        dataset.field: "pathology"
+    subset:
+    # Create PCA tables for each of the subsets defined below
+        All:
+            class:
+                - DKD  
+                - normal
+        DKD:
+            class:
+                - DKD
+        Normal:
+            class:
+                - normal
+        Glomerulus:
+            region:
+                - glomerulus
+        Tubule:
+            region:
+                - tubule
+        Abnormal_Glomerulus:
+            region: glomerulus
+            pathology: abnormal
+        # Save the PCA tables
+        export: true
 ---
 
 ## Load Libraries
@@ -1122,7 +1160,7 @@ if(params$default.normalization$export){
 #| warning: false
 #| message: false
 
-# Counts
+# Create log counts and account for zeroes by adding one
 raw.log.counts <- log2(q3.normalization.output$object@assayData$exprs + 1)
 q3.log.counts <- log2(q3.normalization.output$object@assayData$q_norm + 1)
 neg.log.counts <- log2(neg.normalization.output$object@assayData$neg_norm + 1)
@@ -1504,18 +1542,19 @@ print(default.pca.comb)
 print(standr.pca.comb)
 ```
 
-#### PCA by Pathology
+#### PCA by Dataset Specific Field
+# Specific to the current dataset
 
 ```{r PCA for Pathology, fig.width=12, fig.height=8}
-#| label: fig-PCApathology
-#| fig-cap: "PCA colored by Pathology"
+#| label: fig-PCAdatasetfield
+#| fig-cap: "PCA colored by Dataset Specific Field"
 #| warning: false
 
 default.pca.path <- PCA_biplots(pca.table.list = default.pca.list, 
-                                   color.group = "pathology")
+                                   color.group = params$PCA$plots$dataset.field)
 
 standr.pca.path <- PCA_biplots(pca.table.list = standr.pca.list, 
-                                   color.group = "pathology")
+                                   color.group = params$PCA$plots$dataset.field)
 
 print(default.pca.path)
 print(standr.pca.path)
@@ -1541,6 +1580,8 @@ comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list,
 
 ```{r PCA Exports}
 
+### Create PCA tables for subsets of the data ###
+
 # Function for subsetting samples
 subset.counts.annotation <- function(counts, 
                                      annotation,
@@ -1565,17 +1606,9 @@ subset.counts.annotation <- function(counts,
 }
 
 # A list of all the PCA tables to generate with their corresponding subset specifications
-whole.subset.list <- list(
-  All = list(class = c("DKD", "normal")), 
-  DKD = list(class = c("DKD")), 
-  Normal = list(class = c("normal")), 
-  Glomerulus = list(region = c("glomerulus")), 
-  Tubule = list(region = c("tubule")), 
-  Abnormal_Glomerulus = list(region = "glomerulus", 
-                             pathology = "abnormal")
-)
+whole.subset.list <- params$PCA$subset
 
-# A list to hold all subsetted counts and annotations
+# A list to hold all subset counts and annotations
 subset.df.list <- list()
 
 # Normalization type to use
@@ -1586,7 +1619,7 @@ for(subset.group in names(whole.subset.list)){
   
   subset.list <- whole.subset.list[[subset.group]]
   
-  # Set up the annotaiton and counts to subset
+  # Set up the annotation and counts to subset
   annotation.subset <- cleaned.annotation.df
   counts.subset <- normalized.log.counts
   
@@ -1614,10 +1647,6 @@ for(subset.group in names(whole.subset.list)){
   
 }
 
-normal.pca <- pca(subset.df.list$Normal$counts, 
-                  metadata = subset.df.list$Normal$annotation, 
-                  removeVar = 0.1)
-
 # Run pca and export if needed
  
 pca.data.list <- list()
@@ -1634,8 +1663,7 @@ for(df.name in names(subset.df.list)){
   
 }
 
-export = FALSE
-if(export){
+if(params$PCA$subset$export){
   
   for(pca.df.name in names(pca.data.list)){
     
@@ -1662,17 +1690,17 @@ post.negnorm.logcounts <- log(as.data.frame(neg.normalization.output$object@assa
 quantile.normalization.logcounts <- log(quantile.normalization.counts, base = 2)
 
 # Setup annotation groups for the ratio "M" (log A - log B)
-region.types <- c("glomerulus", "tubule")
+contrast.levels <- params$MA$contrast.levels
 
 # Define the name of the contrast
-contrast.name <- paste0(region.types[[1]], 
+contrast.name <- paste0(contrast.levels[[1]], 
                         "_", 
-                        region.types[[2]])
+                        contrast.levels[[2]])
 
 # Set up the annotations and raw counts for the MA plots
-contrast.field <- "region"
-condition.label <- "glomerulus"
-reference.label <- "tubule"
+contrast.field <- params$MA$contrast.field
+condition.label <- contrast.levels[[1]]
+reference.label <- contrast.levels[[2]]
 raw.log.counts <- log(as.data.frame(qc.output$object@assayData$exprs), base = 2)
 raw.log.counts.standr <- log(as.data.frame(qc.output.standr$object@assayData$exprs), base = 2)
 annotation.MA <- cleaned.annotation.df
