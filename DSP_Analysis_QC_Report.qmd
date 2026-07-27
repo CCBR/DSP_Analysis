@@ -199,7 +199,7 @@ sankey.output <- plot_sankey(object = init.object,
 if(parameters$sankey$combine.cols){
   
   pData(init.object) <- pData(init.object) %>%
-  unite("combined_column", 
+  tidyr::unite(col = "combined_column", 
         all_of(parameters$sankey$cols.to.combine), 
         sep = "_", 
         remove = FALSE)
