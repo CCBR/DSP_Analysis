@@ -2192,18 +2192,24 @@ run_de_comparison <- function(comp.parameters,
   for (de.method in de.methods) {
     cat("\n\n##### ", de.method, "\n\n", sep = "")
     
-    result.file <- file.path(
+    result.file <- paste0(
       parameters$paths$de.folder,
-      paste0(comp.parameters$contrast.name, 
-             "_", de.method, 
-             "_de.results.csv"))
+      comp.parameters$contrast.name, 
+      "_", de.method, 
+      "_de.results.csv")
     
-    result.RDS <- file.path(parameters$paths$de.folder, 
-                            paste0(comp.parameters$contrast.name, 
-                                   "_", de.method, "_de.results.RDS"))
+    result.RDS <- paste0(parameters$paths$de.folder, 
+                         comp.parameters$contrast.name, 
+                         "_", 
+                         de.method, 
+                         "_de.results.RDS")
+    
+    # Defaults to account for a new run
+    write.results <- FALSE
+    run.de <- FALSE
     
     # Reuse existing DE results unless overwrite.results = TRUE.
-    if(!!file.exists(result.RDS) && !!file.exists(result.file)){
+    if(!(file.exists(result.RDS) && file.exists(result.file))){
       
       # Write the new results
       cat(paste0("Could not find results files: ", 
@@ -2211,47 +2217,43 @@ run_de_comparison <- function(comp.parameters,
                  " and ", 
                  result.file))
       write.results <- TRUE
+      run.de <- TRUE
       
-    } else if(!isTRUE(comp.parameters$overwrite.results)) {
-      
+    } else if(comp.parameters$overwrite.results) {
       
       # Save a backup of previous results
       file.copy(result.file, 
-                  paste0(comp.parameters$contrast.name, 
-                         "_", de.method, 
-                         format(Sys.time(), "%Y%m%d_%H%M%S"), 
-                         "results_backup.csv"))
+                paste0(parameters$paths$de.folder, 
+                       "backup_results/", 
+                       comp.parameters$contrast.name, 
+                       "_", de.method, 
+                       format(Sys.time(), "%Y%m%d_%H%M"), 
+                       "results_backup.csv"))
       
       file.copy(result.file, 
-                  paste0(comp.parameters$contrast.name, 
-                         "_", de.method,  
-                         format(Sys.time(), "%Y%m%d_%H%M%S"), 
-                         "results_backup.RDS"))
+                paste0(parameters$paths$de.folder, 
+                       "backup_results/", 
+                       comp.parameters$contrast.name, 
+                       "_", de.method, 
+                       format(Sys.time(), "%Y%m%d_%H%M"), 
+                       "results_backup.RDS"))
       
       cat("Saved previous results as a backup.")
       
       
       write.results <- TRUE
+      run.de <- TRUE
       
     } 
       
-    
-    
-    if (
-      file.exists(result.RDS) &&
-      !isTRUE(default_if_null(comp.parameters$overwrite.results, FALSE))
-    ) {
-      
-      #results.df <- read.csv(
-      #  result.file,
-      #  stringsAsFactors = FALSE,
-      #  check.names = FALSE)
+    if (!run.de) {
       
       method.output <- readRDS(result.RDS)
       
       results.df <- method.output$results
       
       cat("*Loaded existing DE results from: ", result.file, "*\n\n", sep = "")
+      
     } else {
       # Run default DSPWorkflow diffExpr.
       if (de.method == "default") {
@@ -2272,7 +2274,7 @@ run_de_comparison <- function(comp.parameters,
       results.df <- method.output$results
       
       # Save standardized DE results.
-      if (isTRUE(default_if_null(comp.parameters$write.results, TRUE))) {
+      if (write.results) {
         dir.create(
           parameters$paths$de.folder,
           showWarnings = FALSE,
@@ -2447,7 +2449,7 @@ run_de_comparison <- function(comp.parameters,
   
   gsea.outputs <- list()
   
-  if (isTRUE(default_if_null(comp.parameters$export.gsea.input, FALSE))) {
+  if (comp.parameters$export.gsea.input) {
     
     for (de.method in names(method.outputs)) {
       
@@ -2494,16 +2496,9 @@ run_de_comparison <- function(comp.parameters,
         }
       }
       
-      # This is your existing signal-to-noise ranking function.
       gsea.preranked.df <- gsea_preranked_list(
-        contrast.field = default_if_null(
-          comp.parameters$gsea.contrast.field,
-          comp.parameters$region.col
-        ),
-        contrast.levels = default_if_null(
-          comp.parameters$gsea.contrast.levels,
-          comp.parameters$regions
-        ),
+        contrast.field = comp.parameters$gsea.contrast.field,
+        contrast.levels = comp.parameters$gsea.contrast.levels,
         annotation = gsea.annotation,
         log.counts = gsea.log.counts
       )
@@ -2581,31 +2576,16 @@ run_de_comparison <- function(comp.parameters,
     }
   }
   
-
-  # Return all useful objects invisibly
-
+  # Add all data for the output list
+  method.outputs$contrast.name <- comp.parameters$contrast.name
   
-  first.method <- de.methods[1]
-  
-  out <- list(
-    contrast.name = comp.parameters$contrast.name,
-    de.methods = de.methods,
-    summary.table = summary.table,
-    method.results = method.outputs,
-    results = method.outputs[[first.method]]$results,
-    volcano = method.outputs[[first.method]]$volcano,
-    volcano.nolabel = method.outputs[[first.method]]$volcano.nolabel,
-    gsea.outputs = gsea.outputs
-  )
-  
-  # Also allow convenient direct access:
-  #   de.outputs$contrast_name$default
-  #   de.outputs$contrast_name$standr
-  for (de.method in names(method.outputs)) {
-    out[[de.method]] <- method.outputs[[de.method]]
+  for(de.method in de.methods){
+    
+    method.outputs[[de.method]]$gsea <- gsea.outputs[[de.method]]
+    
   }
   
-  invisible(out)
+  return(method.outputs)
 }
 
 

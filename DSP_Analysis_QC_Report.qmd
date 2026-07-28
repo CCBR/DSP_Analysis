@@ -45,7 +45,7 @@ source("DSP_QC_functions.R")
 
 
 # For interactive runs/troubleshooting in Rstudio, switch to TRUE
-interactive.test <- FALSE
+interactive.test <- TRUE
 if(interactive.test){
   parameters <- yaml::read_yaml("test_datasets/Human_Kidney/parameters/human_kidney_test.yaml")
 }
@@ -54,7 +54,8 @@ if(interactive.test){
 output.folders <- c(parameters$paths$project.folder, 
                     paste0(parameters$paths$qc.folder, parameters$paths$run.folder), 
                     paste0(parameters$paths$project.folder, parameters$initialization$dcc.folder), 
-                    paste0(parameters$paths$qc.folder, "StandR/"), 
+                    paste0(parameters$paths$qc.folder, "StandR/"),
+                    paste0(parameters$paths$qc.folder, "StandR/input_files/"), 
                     paste0(parameters$paths$qc.folder, "pca/"))
 
 for(folder in output.folders){
@@ -116,7 +117,7 @@ if(parameters$initialization$export){
           file = paste0(parameters$paths$qc.folder, parameters$paths$dataset.name, "_preQC_object.RDS"))
   
   ## Save the counts ##
-  preQC.counts <- init.object@assayData$exprs
+  preQC.counts <- as.data.frame(init.object@assayData$exprs)
   
   # Map the gene name
   RTS.gene.mapping <- as.data.frame(fData(init.object)) %>% 
@@ -648,9 +649,7 @@ print(best.k.comparison.plot)
 #| eval: !expr parameters$run$best.k.chosen
 
 # Export the inputs for DE Analysis
-
-export = FALSE
-if(export){
+if(parameters$standr.normalization$export.ruv.object){
   
   saveRDS(spatial.object.standr.final, 
           file = paste0(parameters$paths$qc.folder, 

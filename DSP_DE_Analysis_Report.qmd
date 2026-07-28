@@ -3,12 +3,7 @@ title: "DSP DE Analysis - Kidney Test Dataset"
 format:
   html:
     code-fold: true
-editor: visual
-
-params:
-  data.folder: "test_datasets/Human_Kidney/"
-  de.folder: "test_datasets/Human_Kidney/de/"
-  dataset.name: "human_kidney_test_"
+    embed-resources: true
 ---
 
 # DE Analysis
@@ -38,18 +33,38 @@ library(openxlsx)
 # Source the helper functions
 source("DSP_functions.R")
 
+# For interactive runs
+parameters <- yaml::read_yaml("test_datasets/Human_Kidney/parameters/human_kidney_test.yaml")
+
+# Check for output folders and create the folder if missing
+output.folders <- c(parameters$paths$de.folder, 
+                    paste0(parameters$paths$de.folder, "volcano/"), 
+                    parameters$paths$gsea.folder, 
+                    paste0(parameters$paths$de.folder, "backup_results/"), 
+                    paste0(parameters$paths$de.folder, "method_comparison/"))
+
+for(folder in output.folders){
+  
+  if(!dir.exists(folder)){
+    
+    print(paste0(folder, " not found. Creating the folder now."))
+    dir.create(folder, recursive = TRUE, showWarnings = FALSE)
+    
+  }
+}
 ```
 
 ### Load the all Input Counts and Annotation
 
 ```{r Load Normalized Counts}
 
-normalized.object <- readRDS(file = paste0(params$data.folder,
-                                                 params$dataset.name, 
-                                                 "q3normalized_object.RDS"))
+normalized.object <- readRDS(file = paste0(parameters$paths$qc.folder, 
+                                           parameters$paths$dataset.name, 
+                                           "_q3normalized_object.RDS"))
 
 # Load the StandR RUV object
-standr.ruv.object <- readRDS(file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+standr.ruv.object <- readRDS(file = paste0(parameters$paths$qc.folder, 
+                                           "StandR/standr_ruv_object.RDS"))
 
 
 
@@ -262,10 +277,12 @@ de.comparisons <- list(
 
 ```{r}
 
+de.comparisons <- parameters$de$comparisons
+
 de.outputs <- run_all_de_comparisons(
   de.comparisons = de.comparisons,
   normalized.object = normalized.object,
-  params = params,
+  parameters = parameters,
   standr.object = standr.ruv.object
 )
 ```
@@ -283,19 +300,19 @@ method_degs_venn <- function(de.results,
                              logfc.cutoff){ 
   
   # Gather the up and down degs for each result
-  up.standr <- de.results$method.results$standr$results %>% 
+  up.standr <- de.results$standr$results %>% 
     filter(padj < 0.05, logfc >= logfc.cutoff)
   up.standr.degs <- up.standr$gene
   
-  down.standr <- de.results$method.results$standr$results %>% 
+  down.standr <- de.results$standr$results %>% 
     filter(padj < 0.05, logfc <= -logfc.cutoff)
   down.standr.degs <- down.standr$gene
   
-  up.default <- de.results$method.results$default$results %>% 
+  up.default <- de.results$default$results %>% 
     filter(padj < 0.05, logfc >= logfc.cutoff)
   up.default.degs <- up.default$gene
   
-  down.default <- de.results$method.results$default$results %>% 
+  down.default <- de.results$default$results %>% 
     filter(padj < 0.05, logfc <= -logfc.cutoff)
   down.default.degs <- down.default$gene
   
@@ -395,13 +412,6 @@ method_degs_venn <- function(de.results,
 
 ```{r}
 
-# Toggle for the deg list to be written out as an excel file
-write.deg.lists <- TRUE
-
-# Toggle to export the venn diagrams
-export.venn <- TRUE
-
-
 comparison.venn.list <- list()
 
 for(comparison in names(de.outputs)){
@@ -415,10 +425,10 @@ for(comparison in names(de.outputs)){
   
   comparison.venn.list[[comparison]] <- comparison.venn.diagrams
   
-  if(export.venn){
+  if(parameters$de$common$export.venn){
     
     ggsave(comparison.venn.diagrams$all.venn, 
-           file = paste0(params$de.folder, 
+           file = paste0(parameters$paths$de.folder, 
                          "method_comparison/", 
                          comparison, 
                          "_de_venn.png"))
@@ -429,10 +439,8 @@ for(comparison in names(de.outputs)){
 }
 
 
-
-
 # Create an excel output file with one tab per contrast
-if(write.deg.lists == TRUE){
+if(parameters$de$common$write.deg.lists){
   
   deg.list.output <- createWorkbook()
   
@@ -446,7 +454,7 @@ if(write.deg.lists == TRUE){
               deg.list)
     
     saveWorkbook(deg.list.output, 
-                 paste0(params$de.folder, 
+                 paste0(parameters$paths$de.folder, 
                         "method_comparison/", 
                         "deg_list_method_comparison.xlsx"), 
                  overwrite = TRUE)
