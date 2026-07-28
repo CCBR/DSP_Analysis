@@ -29,6 +29,8 @@ paths:
     qc.folder: "test_datasets/Human_Kidney/qc/"
     run.folder: "qc_report/"
     dataset.name: "human_kidney_test"
+    de.folder: "test_datasets/Human_Kidney/de/"
+    gsea.folder: "test_datasets/Human_Kidney/gsea/"
 
 initialization:
   pkc.file.name: "TAP_H_WTA_v1.0.pkc"
@@ -47,7 +49,7 @@ initialization:
   nuclei.field.name: "nuclei"
   exclude.sankey: false
   segment.id.length: 8
-  export: false
+  export: true
 
 # Sankey Plot Parameters
 # Put []"default"] for lane order if you want to use abc order
@@ -107,6 +109,7 @@ standr.normalization:
     bio.fields: ["combined_column", "class"]
     # The best k value for normalization, if best.k.chosen is true, this will be used for normalization
     best.k: 2
+    export.ruv.object: true
 
 default.normalization:
     export.normalized.counts: true
@@ -150,32 +153,13 @@ PCA:
 de:
   # Parameters shared across all comparisons below.
   # Each comparison inherits these via the YAML anchor/merge key "<<: *common_de_params",
-  # then overrides only what's unique to that comparison.
-  #
-  # NOTE: YAML's "<<" merge only combines keys at the top level, unlike R's
-  # modifyList() which merges nested lists recursively. Because each comparison
-  # needs to override specific fields *within* the nested "standr" list
-  # (design.annotation, contrast.numerator, contrast.denominator) while keeping
-  # the rest of "standr" from common, each comparison's "standr" block is written
-  # out in full below rather than relying on merge to combine it.
+  # then overrides only what's unique to that comparison, but only on the first level. 
+  # For example, standr parameters are nested, so they must be fully specified for each comparison.
+
   common: &common_de_params
     # DE methods to run. Options: "default", "standr", or both.
     # When both are supplied, functions run default first, then standr.
     de.method: ["default", "standr"]
-
-    # StandR defaults shared across comparisons
-    standr:
-      object.name: "standr.ruv.object"
-      covariates: ["ruv_W1", "ruv_W2"]
-      block.field: "slide_name"
-      filter.by.expr: true
-      estimate.disp.robust: true
-      ebayes.robust: true
-      plot.voom: false
-      sort.by: "P"
-      clean.design.names: true
-      print.design.columns: true
-      remove.batch.for.gsea: false
 
     # Volcano parameters
     fc.limit: 1
@@ -183,7 +167,7 @@ de:
     n.labels: 10
 
     write.results: true
-    overwrite.results: false
+    overwrite.results: true
 
     title.size: 22
     legend.coordinates: [0.99, 0.1]
@@ -207,9 +191,13 @@ de:
     label.top.genes: false
     make.nolabel.volcano: false
 
-    export.volcano: false
+    export.volcano: true
     export.volcano.nolabel: false
-    export.gsea.input: false
+    export.gsea.input: true
+
+    # Venn Diagrams and method comparison
+    write.deg.lists: true # write out as an excel file
+    export.venn: true
 
   # Individual comparisons with unique parameters
   comparisons:
@@ -217,8 +205,6 @@ de:
     - <<: *common_de_params
       contrast.name: "DKD_Tubule_panck_pos_vs_neg"
       heading: "DKD Tubule PanCK Pos vs. Neg"
-
-      overwrite.results: false
 
       subset.group.1:
         class: ["DKD"]
