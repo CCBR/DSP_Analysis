@@ -1437,39 +1437,39 @@ get_top_gene_labels <- function(results.df,
 # Wrapper around improved_make_volcano() function.
 # This keeps volcano parameter handling in one place.
 make_de_volcano <- function(results.df,
-                            comp.params,
+                            comp.parameters,
                             custom.labels = NULL,
                             remove.all.gene.labels = FALSE,
                             label.size = NULL) {
   improved_make_volcano(
     lmm.results = results.df,
     title = default_if_null(
-      comp.params$volcano.title,
-      default_if_null(comp.params$heading, comp.params$contrast.name)
+      comp.parameters$volcano.title,
+      default_if_null(comp.parameters$heading, comp.parameters$contrast.name)
     ),
-    title.size = default_if_null(comp.params$title.size, 22),
-    legend.title = default_if_null(comp.params$legend.title, "Expression"),
-    fc.limit = default_if_null(comp.params$fc.limit, 1.5),
+    title.size = default_if_null(comp.parameters$title.size, 22),
+    legend.title = default_if_null(comp.parameters$legend.title, "Expression"),
+    fc.limit = default_if_null(comp.parameters$fc.limit, 1.5),
     custom.gene.labels = custom.labels,
-    remove.controls = default_if_null(comp.params$remove.controls, FALSE),
-    remove.genes = default_if_null(comp.params$remove.genes, NULL),
+    remove.controls = default_if_null(comp.parameters$remove.controls, FALSE),
+    remove.genes = default_if_null(comp.parameters$remove.genes, NULL),
     remove.all.gene.labels = remove.all.gene.labels,
-    legend.coordinates = default_if_null(comp.params$legend.coordinates, c(.99, .8)),
-    x.lab = default_if_null(comp.params$x.lab, "Log2 Fold Change"),
-    y.lab = default_if_null(comp.params$y.lab, "-Log10 adjusted p-value"),
-    dotted.line.color = default_if_null(comp.params$dotted.line.color, "black"),
-    alpha = default_if_null(comp.params$alpha, 1),
-    nonDE.color = default_if_null(comp.params$nonDE.color, "gray60"),
-    upDE.color = default_if_null(comp.params$upDE.color, "red"),
-    downDE.color = default_if_null(comp.params$downDE.color, "blue"),
+    legend.coordinates = default_if_null(comp.parameters$legend.coordinates, c(.99, .8)),
+    x.lab = default_if_null(comp.parameters$x.lab, "Log2 Fold Change"),
+    y.lab = default_if_null(comp.parameters$y.lab, "-Log10 adjusted p-value"),
+    dotted.line.color = default_if_null(comp.parameters$dotted.line.color, "black"),
+    alpha = default_if_null(comp.parameters$alpha, 1),
+    nonDE.color = default_if_null(comp.parameters$nonDE.color, "gray60"),
+    upDE.color = default_if_null(comp.parameters$upDE.color, "red"),
+    downDE.color = default_if_null(comp.parameters$downDE.color, "blue"),
     label.size = default_if_null(
       label.size,
-      default_if_null(comp.params$label.size, 8)
+      default_if_null(comp.parameters$label.size, 8)
     ),
-    label.color = default_if_null(comp.params$label.color, "black"),
-    axis.tick.label.size = default_if_null(comp.params$axis.tick.label.size, 20),
-    legend.text.size = default_if_null(comp.params$legend.text.size, 20),
-    axis.title.size = default_if_null(comp.params$axis.title.size, 20)
+    label.color = default_if_null(comp.parameters$label.color, "black"),
+    axis.tick.label.size = default_if_null(comp.parameters$axis.tick.label.size, 20),
+    legend.text.size = default_if_null(comp.parameters$legend.text.size, 20),
+    axis.title.size = default_if_null(comp.parameters$axis.title.size, 20)
   )
 }
 
@@ -1481,16 +1481,16 @@ make_de_volcano <- function(results.df,
 # Given an annotation data frame and a list of fields/values, return TRUE for
 # samples that match all requested fields.
 #
-# Example group.params:
+# Example group.parameters:
 #   list(class = "DKD", region = "tubule", segment = "PanCK_pos")
-annotation_matches_group <- function(annotation.df, group.params) {
-  if (is.null(group.params) || length(group.params) == 0) {
+annotation_matches_group <- function(annotation.df, group.parameters) {
+  if (is.null(group.parameters) || length(group.parameters) == 0) {
     return(rep(TRUE, nrow(annotation.df)))
   }
   
   keep <- rep(TRUE, nrow(annotation.df))
   
-  for (field in names(group.params)) {
+  for (field in names(group.parameters)) {
     if (!field %in% colnames(annotation.df)) {
       stop(
         "Field '", field, "' was not found in StandR colData.\n\n",
@@ -1499,7 +1499,7 @@ annotation_matches_group <- function(annotation.df, group.params) {
       )
     }
     
-    keep <- keep & annotation.df[[field]] %in% group.params[[field]]
+    keep <- keep & annotation.df[[field]] %in% group.parameters[[field]]
   }
   
   keep
@@ -1509,17 +1509,17 @@ annotation_matches_group <- function(annotation.df, group.params) {
 # Subset the StandR object to the AOIs/samples used in the current comparison.
 # This mirrors the subset.group.1/subset.group.2 logic used for the default
 # DSPWorkflow analysis.
-subset_standr_object_for_comparison <- function(standr.object, comp.params) {
+subset_standr_object_for_comparison <- function(standr.object, comp.parameters) {
   annotation.df <- as.data.frame(colData(standr.object))
   
   keep.group.1 <- annotation_matches_group(
     annotation.df = annotation.df,
-    group.params = comp.params$subset.group.1
+    group.parameters = comp.parameters$subset.group.1
   )
   
   keep.group.2 <- annotation_matches_group(
     annotation.df = annotation.df,
-    group.params = comp.params$subset.group.2
+    group.parameters = comp.parameters$subset.group.2
   )
   
   # Keep samples belonging to either contrast group.
@@ -1528,7 +1528,7 @@ subset_standr_object_for_comparison <- function(standr.object, comp.params) {
   if (!any(keep)) {
     stop(
       "No StandR samples matched subset.group.1 or subset.group.2 for contrast: ",
-      comp.params$contrast.name
+      comp.parameters$contrast.name
     )
   }
   
@@ -1558,19 +1558,19 @@ subset_standr_object_for_comparison <- function(standr.object, comp.params) {
 #
 # The design annotation prefix is removed so columns like segmentPanCK_pos become
 # PanCK_pos, making contrast definitions cleaner.
-make_standr_design <- function(standr.object, comp.params) {
-  standr.params <- comp.params$standr
+make_standr_design <- function(standr.object, comp.parameters) {
+  standr.parameters <- comp.parameters$standr
   
   object.metadata <- as.data.frame(colData(standr.object))
   object.metadata <- droplevels(object.metadata)
   
-  design.annotation <- standr.params$design.annotation
-  covariates <- default_if_null(standr.params$covariates, NULL)
+  design.annotation <- standr.parameters$design.annotation
+  covariates <- default_if_null(standr.parameters$covariates, NULL)
   
   if (is.null(design.annotation)) {
     stop(
       "standr$design.annotation is NULL for contrast: ",
-      comp.params$contrast.name
+      comp.parameters$contrast.name
     )
   }
   
@@ -1602,14 +1602,14 @@ make_standr_design <- function(standr.object, comp.params) {
   )
   
   # Clean names like segmentPanCK_pos -> PanCK_pos.
-  if (isTRUE(default_if_null(standr.params$clean.design.names, TRUE))) {
+  if (isTRUE(default_if_null(standr.parameters$clean.design.names, TRUE))) {
     clean.pattern <- default_if_null(
-      standr.params$clean.design.pattern,
+      standr.parameters$clean.design.pattern,
       paste0("^", design.annotation)
     )
     
     clean.replacement <- default_if_null(
-      standr.params$clean.design.replacement,
+      standr.parameters$clean.design.replacement,
       ""
     )
     
@@ -1628,7 +1628,7 @@ make_standr_design <- function(standr.object, comp.params) {
     )
   }
   
-  if (isTRUE(default_if_null(standr.params$print.design.columns, TRUE))) {
+  if (isTRUE(default_if_null(standr.parameters$print.design.columns, TRUE))) {
     cat("**StandR design columns**\n\n")
     cat(paste(colnames(design), collapse = ", "))
     cat("\n\n")
@@ -1646,16 +1646,16 @@ make_standr_design <- function(standr.object, comp.params) {
 #
 # becomes:
 #   PanCK_pos - PanCK_neg
-make_standr_contrast <- function(design, comp.params) {
-  standr.params <- comp.params$standr
+make_standr_contrast <- function(design, comp.parameters) {
+  standr.parameters <- comp.parameters$standr
   
-  numerator <- standr.params$contrast.numerator
-  denominator <- standr.params$contrast.denominator
+  numerator <- standr.parameters$contrast.numerator
+  denominator <- standr.parameters$contrast.denominator
   
   if (is.null(numerator) || is.null(denominator)) {
     stop(
       "standr$contrast.numerator and standr$contrast.denominator must both be supplied for contrast: ",
-      comp.params$contrast.name
+      comp.parameters$contrast.name
     )
   }
   
@@ -1682,8 +1682,8 @@ make_standr_contrast <- function(design, comp.params) {
   )
   
   colnames(contrast.matrix) <- default_if_null(
-    standr.params$contrast.name,
-    comp.params$contrast.name
+    standr.parameters$contrast.name,
+    comp.parameters$contrast.name
   )
   
   contrast.matrix
@@ -1712,8 +1712,8 @@ make_standr_contrast <- function(design, comp.params) {
 # batch effects while preserving the biological contrast of interest.
 make_standr_gsea_log_counts <- function(v,
                                         standr.object,
-                                        comp.params) {
-  standr.params <- comp.params$standr
+                                        comp.parameters) {
+  standr.parameters <- comp.parameters$standr
   
   # Pull sample metadata for the same samples present in the voom matrix.
   object.metadata <- as.data.frame(colData(standr.object))
@@ -1727,8 +1727,8 @@ make_standr_gsea_log_counts <- function(v,
   # This is the biological field used by gsea_preranked_list(), for example:
   #   segment, class, or region.
   contrast.field <- default_if_null(
-    comp.params$gsea.contrast.field,
-    comp.params$region.col
+    comp.parameters$gsea.contrast.field,
+    comp.parameters$region.col
   )
   
   if (!contrast.field %in% colnames(object.metadata)) {
@@ -1752,8 +1752,8 @@ make_standr_gsea_log_counts <- function(v,
   # For GSEA, we can remove their effect from v$E while preserving the contrast.
   covariate.matrix <- NULL
   
-  if (isTRUE(default_if_null(standr.params$remove.ruv.for.gsea, TRUE))) {
-    covariates <- default_if_null(standr.params$covariates, NULL)
+  if (isTRUE(default_if_null(standr.parameters$remove.ruv.for.gsea, TRUE))) {
+    covariates <- default_if_null(standr.parameters$covariates, NULL)
     
     if (!is.null(covariates)) {
       missing.covariates <- setdiff(
@@ -1799,8 +1799,8 @@ make_standr_gsea_log_counts <- function(v,
   #   slide/block correlation separately.
   batch <- NULL
   
-  if (isTRUE(default_if_null(standr.params$remove.batch.for.gsea, FALSE))) {
-    batch.field <- standr.params$block.field
+  if (isTRUE(default_if_null(standr.parameters$remove.batch.for.gsea, FALSE))) {
+    batch.field <- standr.parameters$block.field
     
     if (is.null(batch.field)) {
       stop(
@@ -1844,15 +1844,15 @@ make_standr_gsea_log_counts <- function(v,
 
 
 # Run your original DSPWorkflow::diffExpr() method.
-run_default_de <- function(lmm.input, comp.params) {
+run_default_de <- function(lmm.input, comp.parameters) {
   results.list <- diffExpr(
     object = lmm.input$subset.object,
-    analysis.type = default_if_null(comp.params$analysis.type, "Within Groups"),
-    region.col = comp.params$region.col,
-    regions = comp.params$regions,
-    group.col = comp.params$group.col,
-    groups = comp.params$groups,
-    n.cores = default_if_null(comp.params$n.cores, parallel::detectCores())
+    analysis.type = default_if_null(comp.parameters$analysis.type, "Within Groups"),
+    region.col = comp.parameters$region.col,
+    regions = comp.parameters$regions,
+    group.col = comp.parameters$group.col,
+    groups = comp.parameters$groups,
+    n.cores = parallel::detectCores()
   )
   
   results.df <- standardize_default_results(results.list$results)
@@ -1865,8 +1865,8 @@ run_default_de <- function(lmm.input, comp.params) {
 
 
 # Run the StandR/edgeR/limma-voom method.
-run_standr_de <- function(standr.object, comp.params) {
-  standr.params <- comp.params$standr
+run_standr_de <- function(standr.object, comp.parameters) {
+  standr.parameters <- comp.parameters$standr
   
   # The StandR object should be loaded outside the function and passed in.
   # Example:
@@ -1882,7 +1882,7 @@ run_standr_de <- function(standr.object, comp.params) {
   # Restrict StandR object to samples in this comparison.
   standr.subset.object <- subset_standr_object_for_comparison(
     standr.object = standr.object,
-    comp.params = comp.params
+    comp.parameters = comp.parameters
   )
   
   # Convert SummarizedExperiment/SpatialExperiment-style object to edgeR DGEList.
@@ -1892,18 +1892,18 @@ run_standr_de <- function(standr.object, comp.params) {
   #   ~0 + segment + ruv_W1 + ruv_W2
   design <- make_standr_design(
     standr.object = standr.subset.object,
-    comp.params = comp.params
+    comp.parameters = comp.parameters
   )
   
   # Build contrast matrix, for example:
   #   PanCK_pos - PanCK_neg
   contr.matrix <- make_standr_contrast(
     design = design,
-    comp.params = comp.params
+    comp.parameters = comp.parameters
   )
   
   # Remove genes that are too lowly expressed for reliable DE testing.
-  if (isTRUE(default_if_null(standr.params$filter.by.expr, TRUE))) {
+  if (isTRUE(default_if_null(standr.parameters$filter.by.expr, TRUE))) {
     keep <- edgeR::filterByExpr(
       y = ruv.dge.object,
       design = design
@@ -1925,7 +1925,7 @@ run_standr_de <- function(standr.object, comp.params) {
   if (!any(keep)) {
     stop(
       "No genes were retained by filterByExpr for contrast: ",
-      comp.params$contrast.name
+      comp.parameters$contrast.name
     )
   }
   
@@ -1942,7 +1942,7 @@ run_standr_de <- function(standr.object, comp.params) {
   ruv.dge.object.gene.filter <- edgeR::estimateDisp(
     y = ruv.dge.object.gene.filter,
     design = design,
-    robust = default_if_null(standr.params$estimate.disp.robust, TRUE)
+    robust = default_if_null(standr.parameters$estimate.disp.robust, TRUE)
   )
   
   object.metadata <- as.data.frame(colData(standr.subset.object))
@@ -1951,8 +1951,8 @@ run_standr_de <- function(standr.object, comp.params) {
   # In your case this is often slide_name.
   block <- NULL
   
-  if (!is.null(standr.params$block.field)) {
-    block.field <- standr.params$block.field
+  if (!is.null(standr.parameters$block.field)) {
+    block.field <- standr.parameters$block.field
     
     if (!block.field %in% colnames(object.metadata)) {
       stop(
@@ -1985,7 +1985,7 @@ run_standr_de <- function(standr.object, comp.params) {
     }
   }
   
-  plot.voom <- default_if_null(standr.params$plot.voom, FALSE)
+  plot.voom <- default_if_null(standr.parameters$plot.voom, FALSE)
   
   if (!is.null(block)) {
     # First voom pass without correlation.
@@ -2066,7 +2066,7 @@ run_standr_de <- function(standr.object, comp.params) {
   # Empirical Bayes moderation.
   efit <- limma::eBayes(
     fit = fit.contrast,
-    robust = default_if_null(standr.params$ebayes.robust, TRUE)
+    robust = default_if_null(standr.parameters$ebayes.robust, TRUE)
   )
   
   # Extract all genes for the contrast.
@@ -2074,7 +2074,7 @@ run_standr_de <- function(standr.object, comp.params) {
     fit = efit,
     coef = colnames(contr.matrix)[1],
     number = Inf,
-    sort.by = default_if_null(standr.params$sort.by, "P")
+    sort.by = default_if_null(standr.parameters$sort.by, "P")
   )
   
   # Convert limma column names to the common gene/logfc/pval/padj format.
@@ -2087,7 +2087,7 @@ run_standr_de <- function(standr.object, comp.params) {
   standr.gsea.log.counts <- make_standr_gsea_log_counts(
     v = v,
     standr.object = standr.subset.object,
-    comp.params = comp.params
+    comp.parameters = comp.parameters
   )
   
   # Metadata to use with standr.gsea.log.counts.
@@ -2114,7 +2114,7 @@ run_standr_de <- function(standr.object, comp.params) {
   
   # Optionally retain model objects for debugging.
   # These can be large, so default is FALSE.
-  if (isTRUE(default_if_null(standr.params$return.fit, FALSE))) {
+  if (isTRUE(default_if_null(standr.parameters$return.fit, FALSE))) {
     out$v <- v
     out$fit <- fit
     out$fit.contrast <- fit.contrast
@@ -2130,55 +2130,22 @@ run_standr_de <- function(standr.object, comp.params) {
   out
 }
 
-
-
-# Output directory helper
-
-
-# Determine where GSEA input files should be saved.
-# This lets your Quarto params use whichever folder field you prefer.
-get_gsea_input_dir <- function(params) {
-  if (!is.null(params$gsea.input.folder)) {
-    return(params$gsea.input.folder)
-  }
-  
-  if (!is.null(params$gsea.folder)) {
-    return(file.path(params$gsea.folder, "input_lists"))
-  }
-  
-  if (!is.null(params$results.folder)) {
-    return(file.path(params$results.folder, "gsea", "input_lists"))
-  }
-  
-  if (!is.null(params$data.folder)) {
-    return(file.path(params$data.folder, "gsea", "input_lists"))
-  }
-  
-  stop(
-    "Could not determine where to write GSEA input files. ",
-    "Please provide params$gsea.input.folder, params$gsea.folder, ",
-    "params$results.folder, or params$data.folder."
-  )
-}
-
-
-
 # Main comparison runner
 
 
-run_de_comparison <- function(comp.params,
+run_de_comparison <- function(comp.parameters,
                               normalized.object,
-                              params,
+                              parameters,
                               standr.object = NULL) {
   heading <- default_if_null(
-    comp.params$heading,
-    comp.params$contrast.name
+    comp.parameters$heading,
+    comp.parameters$contrast.name
   )
   
   # Determine which DE method(s) to run for this comparison.
   # Example:
-  #   comp.params$de.method = c("default", "standr")
-  de.methods <- comp.params$de.method
+  #   comp.parameters$de.method = c("default", "standr")
+  de.methods <- comp.parameters$de.method
   
   cat("\n\n#### ", heading, "\n\n", sep = "")
   cat("**DE methods:** ", paste(de.methods, collapse = ", "), "\n\n", sep = "")
@@ -2190,14 +2157,14 @@ run_de_comparison <- function(comp.params,
   #   3. the default-method GSEA signal-to-noise matrix
   lmm.input <- subset_object_for_lmm(
     object = normalized.object,
-    subset.group.1 = comp.params$subset.group.1,
-    subset.group.2 = comp.params$subset.group.2
+    subset.group.1 = comp.parameters$subset.group.1,
+    subset.group.2 = comp.parameters$subset.group.2
   )
   
   # Build a table showing how many samples/AOIs are in the comparison.
   summary.cols <- union(
-    names(comp.params$subset.group.1),
-    names(comp.params$subset.group.2)
+    names(comp.parameters$subset.group.1),
+    names(comp.parameters$subset.group.2)
   )
   
   summary.table.df <- pData(lmm.input$subset.object) %>%
@@ -2225,38 +2192,74 @@ run_de_comparison <- function(comp.params,
   for (de.method in de.methods) {
     cat("\n\n##### ", de.method, "\n\n", sep = "")
     
-    result.file <- file.path(
-      params$de.folder,
-      paste0(comp.params$contrast.name, 
-             "_", de.method, 
-             "_de.results.csv"))
+    result.file <- paste0(
+      parameters$paths$de.folder,
+      comp.parameters$contrast.name, 
+      "_", de.method, 
+      "_de.results.csv")
     
-    result.RDS <- file.path(params$de.folder, 
-                            paste0(comp.params$contrast.name, 
-                                   "_", de.method, "_de.results.RDS"))
+    result.RDS <- paste0(parameters$paths$de.folder, 
+                         comp.parameters$contrast.name, 
+                         "_", 
+                         de.method, 
+                         "_de.results.RDS")
+    
+    # Defaults to account for a new run
+    write.results <- FALSE
+    run.de <- FALSE
     
     # Reuse existing DE results unless overwrite.results = TRUE.
-    if (
-      file.exists(result.RDS) &&
-      !isTRUE(default_if_null(comp.params$overwrite.results, FALSE))
-    ) {
+    if(!(file.exists(result.RDS) && file.exists(result.file))){
       
-      #results.df <- read.csv(
-      #  result.file,
-      #  stringsAsFactors = FALSE,
-      #  check.names = FALSE)
+      # Write the new results
+      cat(paste0("Could not find results files: ", 
+                 result.RDS, 
+                 " and ", 
+                 result.file))
+      write.results <- TRUE
+      run.de <- TRUE
+      
+    } else if(comp.parameters$overwrite.results) {
+      
+      # Save a backup of previous results
+      file.copy(result.file, 
+                paste0(parameters$paths$de.folder, 
+                       "backup_results/", 
+                       comp.parameters$contrast.name, 
+                       "_", de.method, 
+                       format(Sys.time(), "%Y%m%d_%H%M"), 
+                       "results_backup.csv"))
+      
+      file.copy(result.file, 
+                paste0(parameters$paths$de.folder, 
+                       "backup_results/", 
+                       comp.parameters$contrast.name, 
+                       "_", de.method, 
+                       format(Sys.time(), "%Y%m%d_%H%M"), 
+                       "results_backup.RDS"))
+      
+      cat("Saved previous results as a backup.")
+      
+      
+      write.results <- TRUE
+      run.de <- TRUE
+      
+    } 
+      
+    if (!run.de) {
       
       method.output <- readRDS(result.RDS)
       
       results.df <- method.output$results
       
       cat("*Loaded existing DE results from: ", result.file, "*\n\n", sep = "")
+      
     } else {
       # Run default DSPWorkflow diffExpr.
       if (de.method == "default") {
         method.output <- run_default_de(
           lmm.input = lmm.input,
-          comp.params = comp.params
+          comp.parameters = comp.parameters
         )
       }
       
@@ -2264,16 +2267,16 @@ run_de_comparison <- function(comp.params,
       if (de.method == "standr") {
         method.output <- run_standr_de(
           standr.object = standr.object,
-          comp.params = comp.params
+          comp.parameters = comp.parameters
         )
       }
       
       results.df <- method.output$results
       
       # Save standardized DE results.
-      if (isTRUE(default_if_null(comp.params$write.results, TRUE))) {
+      if (write.results) {
         dir.create(
-          params$de.folder,
+          parameters$paths$de.folder,
           showWarnings = FALSE,
           recursive = TRUE
         )
@@ -2297,8 +2300,8 @@ run_de_comparison <- function(comp.params,
     # DEG summary
 
     
-    fc.limit <- default_if_null(comp.params$fc.limit, 1.5)
-    padj.limit <- default_if_null(comp.params$padj.limit, 0.05)
+    fc.limit <- default_if_null(comp.parameters$fc.limit, 1.5)
+    padj.limit <- default_if_null(comp.parameters$padj.limit, 0.05)
     
     total.down.reg.degs <- sum(
       results.df$logfc < -fc.limit & results.df$padj < padj.limit,
@@ -2328,28 +2331,28 @@ run_de_comparison <- function(comp.params,
 
     
     custom.labels <- default_if_null(
-      comp.params$custom.gene.labels,
+      comp.parameters$custom.gene.labels,
       NULL
     )
     
-    if (isTRUE(default_if_null(comp.params$label.top.genes, FALSE))) {
+    if (isTRUE(default_if_null(comp.parameters$label.top.genes, FALSE))) {
       custom.labels <- get_top_gene_labels(
         results.df = results.df,
         fc.limit = fc.limit,
         padj.limit = padj.limit,
-        n = default_if_null(comp.params$n.labels, 10)
+        n = default_if_null(comp.parameters$n.labels, 10)
       )
     }
     
     volcano.plot <- make_de_volcano(
       results.df = results.df,
-      comp.params = comp.params,
+      comp.parameters = comp.parameters,
       custom.labels = custom.labels,
       remove.all.gene.labels = default_if_null(
-        comp.params$remove.all.gene.labels,
+        comp.parameters$remove.all.gene.labels,
         FALSE
       ),
-      label.size = default_if_null(comp.params$label.size, 8)
+      label.size = default_if_null(comp.parameters$label.size, 8)
     )
     
     print(volcano.plot)
@@ -2357,24 +2360,24 @@ run_de_comparison <- function(comp.params,
     volcano.plot.nolabel <- NULL
     
     if (
-      isTRUE(default_if_null(comp.params$make.nolabel.volcano, FALSE)) ||
-      isTRUE(default_if_null(comp.params$export.volcano.nolabel, FALSE))
+      isTRUE(default_if_null(comp.parameters$make.nolabel.volcano, FALSE)) ||
+      isTRUE(default_if_null(comp.parameters$export.volcano.nolabel, FALSE))
     ) {
       volcano.plot.nolabel <- make_de_volcano(
         results.df = results.df,
-        comp.params = comp.params,
+        comp.parameters = comp.parameters,
         custom.labels = NULL,
         remove.all.gene.labels = TRUE,
-        label.size = default_if_null(comp.params$nolabel.label.size, 4)
+        label.size = default_if_null(comp.parameters$nolabel.label.size, 4)
       )
     }
     
     # Create volcano directory if needed.
     if (
-      isTRUE(default_if_null(comp.params$export.volcano, FALSE)) ||
-      isTRUE(default_if_null(comp.params$export.volcano.nolabel, FALSE))
+      isTRUE(default_if_null(comp.parameters$export.volcano, FALSE)) ||
+      isTRUE(default_if_null(comp.parameters$export.volcano.nolabel, FALSE))
     ) {
-      volcano.dir <- file.path(params$de.folder, "volcano")
+      volcano.dir <- file.path(parameters$paths$de.folder, "volcano")
       
       dir.create(
         volcano.dir,
@@ -2383,37 +2386,37 @@ run_de_comparison <- function(comp.params,
       )
     }
     
-    if (isTRUE(default_if_null(comp.params$export.volcano, FALSE))) {
+    if (isTRUE(default_if_null(comp.parameters$export.volcano, FALSE))) {
       volcano.file <- file.path(
-        params$de.folder,
+        parameters$paths$de.folder,
         "volcano",
-        paste0(comp.params$contrast.name, "_", 
+        paste0(comp.parameters$contrast.name, "_", 
                de.method, "_volcano_plot.png")
       )
       
       ggsave(
         filename = volcano.file,
         plot = volcano.plot,
-        width = default_if_null(comp.params$volcano.width, 14),
-        height = default_if_null(comp.params$volcano.height, 10)
+        width = default_if_null(comp.parameters$volcano.width, 14),
+        height = default_if_null(comp.parameters$volcano.height, 10)
       )
       
       cat("*Volcano plot saved to: ", volcano.file, "*\n\n", sep = "")
     }
     
-    if (isTRUE(default_if_null(comp.params$export.volcano.nolabel, FALSE))) {
+    if (isTRUE(default_if_null(comp.parameters$export.volcano.nolabel, FALSE))) {
       volcano.nolabel.file <- file.path(
-        params$de.folder,
+        parameters$paths$de.folder,
         "volcano",
-        paste0(comp.params$contrast.name, "_", de.method, 
+        paste0(comp.parameters$contrast.name, "_", de.method, 
                "_volcano_plot_nolabel.png")
       )
       
       ggsave(
         filename = volcano.nolabel.file,
         plot = volcano.plot.nolabel,
-        width = default_if_null(comp.params$volcano.width, 14),
-        height = default_if_null(comp.params$volcano.height, 10)
+        width = default_if_null(comp.parameters$volcano.width, 14),
+        height = default_if_null(comp.parameters$volcano.height, 10)
       )
       
       cat(
@@ -2446,14 +2449,7 @@ run_de_comparison <- function(comp.params,
   
   gsea.outputs <- list()
   
-  if (isTRUE(default_if_null(comp.params$export.gsea.input, FALSE))) {
-    gsea.dir <- get_gsea_input_dir(params)
-    
-    dir.create(
-      gsea.dir,
-      showWarnings = FALSE,
-      recursive = TRUE
-    )
+  if (comp.parameters$export.gsea.input) {
     
     for (de.method in names(method.outputs)) {
       
@@ -2470,21 +2466,21 @@ run_de_comparison <- function(comp.params,
         
         # StandR GSEA input:
         # use voom-normalized logCPM generated inside run_standr_de().
-        # This may also have RUV covariates removed depending on params.
+        # This may also have RUV covariates removed depending on parameters.
         gsea.annotation <- method.outputs[[de.method]]$gsea.annotation
         gsea.log.counts <- method.outputs[[de.method]]$gsea.log.counts
         
         if(is.null(gsea.annotation)){
           
           
-          cat(paste0(comp.params$heading, " gsea.annotation is NULL for StandR"), 
+          cat(paste0(comp.parameters$heading, " gsea.annotation is NULL for StandR"), 
               "\n\n")
           
         }
         
         if(is.null(gsea.log.counts)){
           
-          cat(paste0(comp.params$heading, " gsea.log.counts is NULL for StandR"), 
+          cat(paste0(comp.parameters$heading, " gsea.log.counts is NULL for StandR"), 
               "\n\n")
           
         }
@@ -2492,7 +2488,7 @@ run_de_comparison <- function(comp.params,
         if (is.null(gsea.annotation) || is.null(gsea.log.counts)) {
           stop(
             "StandR GSEA annotation/log counts were not found for contrast: ",
-            comp.params$contrast.name,
+            comp.parameters$contrast.name,
             ". This usually means StandR results were loaded from cache, ",
             "so the voom object was not regenerated. Set overwrite.results = TRUE ",
             "or rerun StandR so gsea.log.counts can be created."
@@ -2500,16 +2496,9 @@ run_de_comparison <- function(comp.params,
         }
       }
       
-      # This is your existing signal-to-noise ranking function.
       gsea.preranked.df <- gsea_preranked_list(
-        contrast.field = default_if_null(
-          comp.params$gsea.contrast.field,
-          comp.params$region.col
-        ),
-        contrast.levels = default_if_null(
-          comp.params$gsea.contrast.levels,
-          comp.params$regions
-        ),
+        contrast.field = comp.parameters$gsea.contrast.field,
+        contrast.levels = comp.parameters$gsea.contrast.levels,
         annotation = gsea.annotation,
         log.counts = gsea.log.counts
       )
@@ -2520,21 +2509,21 @@ run_de_comparison <- function(comp.params,
         preranked_df = gsea.preranked.df,
         annotation_df = gsea.annotation,
         de_method = de.method,
-        contrast_name = comp.params$contrast.name,
+        contrast_name = comp.parameters$contrast.name,
         contrast_field = default_if_null(
-          comp.params$gsea.contrast.field,
-          comp.params$region.col
+          comp.parameters$gsea.contrast.field,
+          comp.parameters$region.col
         ),
         contrast_levels = default_if_null(
-          comp.params$gsea.contrast.levels,
-          comp.params$regions
+          comp.parameters$gsea.contrast.levels,
+          comp.parameters$regions
         )
       )
       
       gsea.csv.file <- file.path(
-        gsea.dir,
+        parameters$paths$gsea.folder,
         paste0(
-          comp.params$contrast.name,
+          comp.parameters$contrast.name,
           de.method,
           "_gsea_preranked_input.csv"
         )
@@ -2547,9 +2536,9 @@ run_de_comparison <- function(comp.params,
       )
       
       gsea.rds.file <- file.path(
-        gsea.dir,
+        parameters$paths$gsea.folder,
         paste0(
-          comp.params$contrast.name,
+          comp.parameters$contrast.name,
           de.method,
           "_gsea_input_list.RDS"
         )
@@ -2587,31 +2576,16 @@ run_de_comparison <- function(comp.params,
     }
   }
   
-
-  # Return all useful objects invisibly
-
+  # Add all data for the output list
+  method.outputs$contrast.name <- comp.parameters$contrast.name
   
-  first.method <- de.methods[1]
-  
-  out <- list(
-    contrast.name = comp.params$contrast.name,
-    de.methods = de.methods,
-    summary.table = summary.table,
-    method.results = method.outputs,
-    results = method.outputs[[first.method]]$results,
-    volcano = method.outputs[[first.method]]$volcano,
-    volcano.nolabel = method.outputs[[first.method]]$volcano.nolabel,
-    gsea.outputs = gsea.outputs
-  )
-  
-  # Also allow convenient direct access:
-  #   de.outputs$contrast_name$default
-  #   de.outputs$contrast_name$standr
-  for (de.method in names(method.outputs)) {
-    out[[de.method]] <- method.outputs[[de.method]]
+  for(de.method in de.methods){
+    
+    method.outputs[[de.method]]$gsea <- gsea.outputs[[de.method]]
+    
   }
   
-  invisible(out)
+  return(method.outputs)
 }
 
 
@@ -2621,7 +2595,7 @@ run_de_comparison <- function(comp.params,
 
 run_all_de_comparisons <- function(de.comparisons,
                                    normalized.object,
-                                   params,
+                                   parameters,
                                    standr.object = NULL) {
   de.outputs <- stats::setNames(
     vector("list", length(de.comparisons)),
@@ -2634,9 +2608,9 @@ run_all_de_comparisons <- function(de.comparisons,
   
   for (i in seq_along(de.comparisons)) {
     de.outputs[[i]] <- run_de_comparison(
-      comp.params = de.comparisons[[i]],
+      comp.parameters = de.comparisons[[i]],
       normalized.object = normalized.object,
-      params = params,
+      parameters = parameters,
       standr.object = standr.object
     )
   }

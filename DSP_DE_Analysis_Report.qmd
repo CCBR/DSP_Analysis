@@ -3,12 +3,7 @@ title: "DSP DE Analysis - Kidney Test Dataset"
 format:
   html:
     code-fold: true
-editor: visual
-
-params:
-  data.folder: "test_datasets/Human_Kidney/"
-  de.folder: "test_datasets/Human_Kidney/de/"
-  dataset.name: "human_kidney_test_"
+    embed-resources: true
 ---
 
 # DE Analysis
@@ -38,222 +33,42 @@ library(openxlsx)
 # Source the helper functions
 source("DSP_functions.R")
 
+# For interactive runs
+interactive.test <- FALSE
+if(interactive.test){
+  parameters <- yaml::read_yaml("test_datasets/Human_Kidney/parameters/human_kidney_test.yaml")
+}
+
+# Check for output folders and create the folder if missing
+output.folders <- c(parameters$paths$de.folder, 
+                    paste0(parameters$paths$de.folder, "volcano/"), 
+                    parameters$paths$gsea.folder, 
+                    paste0(parameters$paths$de.folder, "backup_results/"), 
+                    paste0(parameters$paths$de.folder, "method_comparison/"))
+
+for(folder in output.folders){
+  
+  if(!dir.exists(folder)){
+    
+    print(paste0(folder, " not found. Creating the folder now."))
+    dir.create(folder, recursive = TRUE, showWarnings = FALSE)
+    
+  }
+}
 ```
 
 ### Load the all Input Counts and Annotation
 
 ```{r Load Normalized Counts}
 
-normalized.object <- readRDS(file = paste0(params$data.folder,
-                                                 params$dataset.name, 
-                                                 "q3normalized_object.RDS"))
+normalized.object <- readRDS(file = paste0(parameters$paths$qc.folder, 
+                                           parameters$paths$dataset.name, 
+                                           "_q3normalized_object.RDS"))
 
 # Load the StandR RUV object
-standr.ruv.object <- readRDS(file = paste0(params$data.folder, "StandR/standr_ruv_object.RDS"))
+standr.ruv.object <- readRDS(file = paste0(parameters$paths$qc.folder, 
+                                           "StandR/standr_ruv_object.RDS"))
 
-
-
-```
-
-## Comparison Parameters
-
-```{r}
-# Parameters shared across all comparisons
-common.comparison.parameters <- list(
-  
-  # DE methods to run.
-  # Options:
-  #   de.method = "default"
-  #   de.method = "standr"
-  #   de.method = c("default", "standr")
-  #
-  # When both are supplied, the functions run them in this order:
-  #   default, then standr
-  de.method = c("default", "standr"),
-  
-  # StandR defaults shared across comparisons
-  standr = list(
-    object.name = "standr.ruv.object",
-    covariates = c("ruv_W1", "ruv_W2"),
-    block.field = "slide_name",
-    filter.by.expr = TRUE,
-    estimate.disp.robust = TRUE,
-    ebayes.robust = TRUE,
-    plot.voom = FALSE,
-    sort.by = "P",
-    clean.design.names = TRUE,
-    print.design.columns = TRUE, 
-    remove.batch.for.gsea = FALSE
-  ),
-  
-  # Volcano parameters
-  fc.limit = 1,
-  padj.limit = 0.05,
-  n.labels = 10,
-
-  write.results = TRUE,
-  overwrite.results = FALSE,
-
-  title.size = 22,
-  legend.coordinates = c(.99, .1),
-  x.lab = "Log2 Fold Change",
-  y.lab = "-Log10 adjusted p-value",
-  dotted.line.color = "black",
-  alpha = 1,
-  nonDE.color = "gray60",
-  upDE.color = "red",
-  downDE.color = "blue",
-  label.size = 8,
-  nolabel.label.size = 4,
-  label.color = "black",
-  axis.tick.label.size = 20,
-  legend.text.size = 20,
-  axis.title.size = 20,
-
-  volcano.width = 14,
-  volcano.height = 10, 
-  
-  label.top.genes = FALSE,
-  make.nolabel.volcano = FALSE,
-
-  export.volcano = FALSE,
-  export.volcano.nolabel = FALSE,
-  export.gsea.input = FALSE
-)
-
-
-# Individual comparisons with unique parameters
-de.comparisons <- list(
-  
-  modifyList(
-    common.comparison.parameters,
-    list(
-      contrast.name = "DKD_Tubule_panck_pos_vs_neg",
-      heading = "DKD Tubule PanCK Pos vs. Neg",
-      
-      overwrite.results = FALSE,
-
-      subset.group.1 = list(
-        class = c("DKD"),
-        region = c("tubule"),
-        segment = c("PanCK_pos")
-      ),
-
-      subset.group.2 = list(
-        class = c("DKD"),
-        region = c("tubule"),
-        segment = c("PanCK_neg")
-      ),
-
-      # Default DSPWorkflow diffExpr parameters
-      analysis.type = "Within Groups",
-      region.col = "segment",
-      regions = c("PanCK_pos", "PanCK_neg"),
-      group.col = "region",
-      groups = c("tubule"),
-      legend.title = "Expression in PanCK+",
-      
-      # StandR parameters unique to this comparison
-      standr = list(
-        design.annotation = "segment",
-        contrast.numerator = "PanCK_pos",
-        contrast.denominator = "PanCK_neg"
-      ), 
-      
-      # Volcano plot
-      volcano.title = "DKD Tubule - PanCK Pos vs. Neg",
-      label.top.genes = FALSE, 
-      
-      # GSEA
-      gsea.contrast.field = "segment",
-      gsea.contrast.levels = c("PanCK_pos", "PanCK_neg")
-    )
-  ), 
-
-  modifyList(
-    common.comparison.parameters,
-    list(
-      contrast.name = "Glomerulus_DKD_vs_Normal",
-      heading = "Glomerulus DKD vs Normal",
-
-      subset.group.1 = list(
-        class = c("DKD"), 
-        region = c("glomerulus")
-      ),
-
-      subset.group.2 = list(
-        class = c("normal"), 
-        region = c("glomerulus")
-      ),
-
-      # Default DSPWorkflow diffExpr parameters
-      analysis.type = "Between Groups",
-      region.col = "region",
-      regions = c("glomerulus"),
-      group.col = "class",
-      groups = c("DKD", "normal"),
-      legend.title = "Expression in DKD",
-      
-      # StandR parameters unique to this comparison
-      # For DKD vs normal, the design annotation should be class.
-      standr = list(
-        design.annotation = "class",
-        contrast.numerator = "DKD",
-        contrast.denominator = "normal"
-      ), 
-
-      # Volcano plot
-      volcano.title = "Glomerulus DKD vs. Normal",
-      label.top.genes = FALSE, 
-      
-      # GSEA
-      gsea.contrast.field = "class",
-      gsea.contrast.levels = c("DKD", "normal")
-    )
-  ),
-  
-  modifyList(
-    common.comparison.parameters,
-    list(
-      contrast.name = "DKD_Glomerulus_vs_Tubule",
-      heading = "DKD Glomerulus vs Tubule",
-
-      subset.group.1 = list(
-        class = c("DKD"), 
-        region = c("glomerulus", "tubule")
-      ),
-
-      subset.group.2 = list(
-        class = c("DKD"), 
-        region = c("glomerulus", "tubule")
-      ),
-
-      # Default DSPWorkflow diffExpr parameters
-      analysis.type = "Within Groups",
-      region.col = "region",
-      regions = c("glomerulus", "tubule"),
-      group.col = "class",
-      groups = c("DKD"),
-      legend.title = "Expression in Glomerulus",
-      
-      # StandR parameters unique to this comparison
-      # For glomerulus vs tubule, the design annotation should be region.
-      standr = list(
-        design.annotation = "region",
-        contrast.numerator = "glomerulus",
-        contrast.denominator = "tubule"
-      ), 
-
-      # Volcano plot
-      volcano.title = "DKD Glomerulus vs. Tubule",
-      label.top.genes = FALSE, 
-      
-      # GSEA
-      gsea.contrast.field = "region",
-      gsea.contrast.levels = c("glomerulus", "tubule")
-    )
-  )
-)
 
 
 ```
@@ -262,10 +77,12 @@ de.comparisons <- list(
 
 ```{r}
 
+de.comparisons <- parameters$de$comparisons
+
 de.outputs <- run_all_de_comparisons(
   de.comparisons = de.comparisons,
   normalized.object = normalized.object,
-  params = params,
+  parameters = parameters,
   standr.object = standr.ruv.object
 )
 ```
@@ -283,19 +100,19 @@ method_degs_venn <- function(de.results,
                              logfc.cutoff){ 
   
   # Gather the up and down degs for each result
-  up.standr <- de.results$method.results$standr$results %>% 
+  up.standr <- de.results$standr$results %>% 
     filter(padj < 0.05, logfc >= logfc.cutoff)
   up.standr.degs <- up.standr$gene
   
-  down.standr <- de.results$method.results$standr$results %>% 
+  down.standr <- de.results$standr$results %>% 
     filter(padj < 0.05, logfc <= -logfc.cutoff)
   down.standr.degs <- down.standr$gene
   
-  up.default <- de.results$method.results$default$results %>% 
+  up.default <- de.results$default$results %>% 
     filter(padj < 0.05, logfc >= logfc.cutoff)
   up.default.degs <- up.default$gene
   
-  down.default <- de.results$method.results$default$results %>% 
+  down.default <- de.results$default$results %>% 
     filter(padj < 0.05, logfc <= -logfc.cutoff)
   down.default.degs <- down.default$gene
   
@@ -395,13 +212,6 @@ method_degs_venn <- function(de.results,
 
 ```{r}
 
-# Toggle for the deg list to be written out as an excel file
-write.deg.lists <- TRUE
-
-# Toggle to export the venn diagrams
-export.venn <- TRUE
-
-
 comparison.venn.list <- list()
 
 for(comparison in names(de.outputs)){
@@ -415,10 +225,10 @@ for(comparison in names(de.outputs)){
   
   comparison.venn.list[[comparison]] <- comparison.venn.diagrams
   
-  if(export.venn){
+  if(parameters$de$common$export.venn){
     
     ggsave(comparison.venn.diagrams$all.venn, 
-           file = paste0(params$de.folder, 
+           file = paste0(parameters$paths$de.folder, 
                          "method_comparison/", 
                          comparison, 
                          "_de_venn.png"))
@@ -429,10 +239,8 @@ for(comparison in names(de.outputs)){
 }
 
 
-
-
 # Create an excel output file with one tab per contrast
-if(write.deg.lists == TRUE){
+if(parameters$de$common$write.deg.lists){
   
   deg.list.output <- createWorkbook()
   
@@ -446,7 +254,7 @@ if(write.deg.lists == TRUE){
               deg.list)
     
     saveWorkbook(deg.list.output, 
-                 paste0(params$de.folder, 
+                 paste0(parameters$paths$de.folder, 
                         "method_comparison/", 
                         "deg_list_method_comparison.xlsx"), 
                  overwrite = TRUE)
