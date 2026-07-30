@@ -45,7 +45,7 @@ source("DSP_QC_functions.R")
 
 
 # For interactive runs/troubleshooting in Rstudio, switch to TRUE
-interactive.test <- TRUE
+interactive.test <- FALSE
 if(interactive.test){
   parameters <- yaml::read_yaml("test_datasets/Human_Kidney/parameters/human_kidney_test.yaml")
 }
@@ -78,12 +78,16 @@ for(folder in output.folders){
 # Input file parameters
 
 pkc.file.name <- parameters$initialization$pkc.file.name
-pkc.file.path <- paste0(parameters$paths$project.folder, pkc.file.name)
+pkc.file.path <- paste0(parameters$paths$project.folder, 
+                        "data/", 
+                        pkc.file.name)
 
-annotation.file.name <- "test_annotation_kidney.xlsx"
+annotation.file.name <- parameters$initialization$annotation.file.name
 annotation.file.path <- paste0(parameters$paths$project.folder, annotation.file.name)
 
-dcc.files <- list.files(file.path(paste0(parameters$paths$project.folder, parameters$initialization$dcc.folder)),
+dcc.files <- list.files(file.path(paste0(parameters$paths$project.folder, 
+                                         "data/", 
+                                         parameters$initialization$dcc.folder)),
   pattern = ".dcc$",
   full.names = TRUE,
   recursive = TRUE
@@ -238,7 +242,9 @@ qc.output <-  qcProc(object = init.object,
                         max.ntc.count = parameters$qc$max.ntc.count,     
                         min.nuclei = parameters$qc$min.nuclei,         
                         min.area = parameters$qc$min.area,
-                        print.plots = FALSE)
+                        print.plots = FALSE, 
+                        remove.local.outliers = parameters$qc$remove.local.outliers, 
+                        shift.counts.zero = parameters$qc$shift.counts.zero)
 
 # Create the input for standR
 qc.output.standr <-  qcProc(object = init.object,
@@ -514,10 +520,10 @@ batch.stats.df <- data.frame(
 )
 
 # Biological factor of interest
-bio.field <- "combined_column"
+bio.field <- parameters$qc$qc.plot.bio.field.1
 
 # Batch factor
-batch.field <- "slide_name"
+batch.field <- parameters$qc$qc.plot.batch.field
 
 # The number of k to test
 num.k <- 5
@@ -1425,14 +1431,19 @@ print(standr.pca.slide)
 #| fig-cap: "PCA colored by Combined Annotations"
 #| warning: false
 
-default.pca.comb <- PCA_biplots(pca.table.list = default.pca.list, 
+if(parameters$sankey$combine.cols){
+  
+  default.pca.comb <- PCA_biplots(pca.table.list = default.pca.list, 
                                    color.group = "combined_column")
 
-standr.pca.comb <- PCA_biplots(pca.table.list = standr.pca.list, 
+  standr.pca.comb <- PCA_biplots(pca.table.list = standr.pca.list, 
                                    color.group = "combined_column")
 
-print(default.pca.comb)
-print(standr.pca.comb)
+  print(default.pca.comb)
+  print(standr.pca.comb)
+  
+}
+
 ```
 
 #### PCA by Dataset Specific Field
@@ -1463,9 +1474,18 @@ comparison.pca.list <- list(Q3 = default.pca.list$q3,
                             Quantile = default.pca.list$quant,
                             RUV = standr.pca.list$ruv)
 
-comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list, 
+if(parameters$sankey$combine.cols){
+  
+  comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list, 
                               color.group = "combined_column", 
                               show.loadings = FALSE)
+  
+} else {
+  
+  comparison.pca <- PCA_biplots(pca.table.list = comparison.pca.list, 
+                              color.group = parameters$qc$qc.plot.bio.field.1, 
+                              show.loadings = FALSE)
+}
 
 ```
 
