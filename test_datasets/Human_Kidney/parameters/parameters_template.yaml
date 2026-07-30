@@ -2,7 +2,9 @@
 # Pipeline parameters for DSP analysis workflow QC and DE analysis
 # ---------------------------------------------------------------------------
 
-title: "DSP Analysis QC Report Template"
+# "DSP Analysis QC Report Template"
+
+config.loaded: true
 
 run:
     # Run standr with a range of k values to evaluate the best k for normalization
@@ -142,14 +144,19 @@ PCA:
 # ============================================================
 # Differential Expression (DE) Parameters
 # ============================================================
+# NOTE: This section intentionally avoids YAML anchors/merge keys ("&"/"*"/"<<:").
+# --execute-params is parsed by Quarto's own engine (not R's yaml package), which
+# does not reliably resolve merge keys. Instead, "common" settings are merged into
+# each comparison in R using modifyList(), which also correctly merges nested
+# fields (like standr) rather than replacing the whole sub-list. See the Setup
+# chunk for the merge step: 
+#   de.comparisons <- lapply(parameters$de$comparisons, function(x) modifyList(parameters$de$common, x))
 
 de:
   # Parameters shared across all comparisons below.
-  # Each comparison inherits these via the YAML anchor/merge key "<<: *common_de_params",
-  # then overrides only what's unique to that comparison, but only on the first level. 
-  # For example, standr parameters are nested, so they must be fully specified for each comparison.
-
-  common: &common_de_params
+  # Each comparison overrides only what's unique to it; anything not
+  # specified in a comparison falls back to these common values (merged in R).
+  common:
     # DE methods to run. Options: "default", "standr", or both.
     # When both are supplied, functions run default first, then standr.
     de.method: ["default", "standr"]
@@ -192,11 +199,27 @@ de:
     write.deg.lists: true # write out as an excel file
     export.venn: true
 
+    # StandR defaults shared across comparisons. Comparison-specific standr
+    # blocks below only need to add/override design.annotation,
+    # contrast.numerator, and contrast.denominator — modifyList() merges
+    # these with the fields defined here.
+    standr:
+      object.name: "standr.ruv.object"
+      covariates: ["ruv_W1", "ruv_W2"]
+      block.field: "slide_name"
+      filter.by.expr: true
+      estimate.disp.robust: true
+      ebayes.robust: true
+      plot.voom: false
+      sort.by: "P"
+      clean.design.names: true
+      print.design.columns: true
+      remove.batch.for.gsea: false
+
   # Individual comparisons with unique parameters
   comparisons:
 
-    - <<: *common_de_params
-      contrast.name: "DKD_Tubule_panck_pos_vs_neg"
+    - contrast.name: "DKD_Tubule_panck_pos_vs_neg"
       heading: "DKD Tubule PanCK Pos vs. Neg"
 
       subset.group.1:
@@ -217,19 +240,8 @@ de:
       groups: ["tubule"]
       legend.title: "Expression in PanCK+"
 
-      # StandR parameters (common defaults + comparison-specific contrast fields)
+      # StandR parameters unique to this comparison (merged with common.standr)
       standr:
-        object.name: "standr.ruv.object"
-        covariates: ["ruv_W1", "ruv_W2"]
-        block.field: "slide_name"
-        filter.by.expr: true
-        estimate.disp.robust: true
-        ebayes.robust: true
-        plot.voom: false
-        sort.by: "P"
-        clean.design.names: true
-        print.design.columns: true
-        remove.batch.for.gsea: false
         design.annotation: "segment"
         contrast.numerator: "PanCK_pos"
         contrast.denominator: "PanCK_neg"
@@ -242,8 +254,7 @@ de:
       gsea.contrast.field: "segment"
       gsea.contrast.levels: ["PanCK_pos", "PanCK_neg"]
 
-    - <<: *common_de_params
-      contrast.name: "Glomerulus_DKD_vs_Normal"
+    - contrast.name: "Glomerulus_DKD_vs_Normal"
       heading: "Glomerulus DKD vs Normal"
 
       subset.group.1:
@@ -263,18 +274,8 @@ de:
       legend.title: "Expression in DKD"
 
       # For DKD vs normal, the design annotation should be class.
+      # (merged with common.standr)
       standr:
-        object.name: "standr.ruv.object"
-        covariates: ["ruv_W1", "ruv_W2"]
-        block.field: "slide_name"
-        filter.by.expr: true
-        estimate.disp.robust: true
-        ebayes.robust: true
-        plot.voom: false
-        sort.by: "P"
-        clean.design.names: true
-        print.design.columns: true
-        remove.batch.for.gsea: false
         design.annotation: "class"
         contrast.numerator: "DKD"
         contrast.denominator: "normal"
@@ -287,8 +288,7 @@ de:
       gsea.contrast.field: "class"
       gsea.contrast.levels: ["DKD", "normal"]
 
-    - <<: *common_de_params
-      contrast.name: "DKD_Glomerulus_vs_Tubule"
+    - contrast.name: "DKD_Glomerulus_vs_Tubule"
       heading: "DKD Glomerulus vs Tubule"
 
       subset.group.1:
@@ -308,18 +308,8 @@ de:
       legend.title: "Expression in Glomerulus"
 
       # For glomerulus vs tubule, the design annotation should be region.
+      # (merged with common.standr)
       standr:
-        object.name: "standr.ruv.object"
-        covariates: ["ruv_W1", "ruv_W2"]
-        block.field: "slide_name"
-        filter.by.expr: true
-        estimate.disp.robust: true
-        ebayes.robust: true
-        plot.voom: false
-        sort.by: "P"
-        clean.design.names: true
-        print.design.columns: true
-        remove.batch.for.gsea: false
         design.annotation: "region"
         contrast.numerator: "glomerulus"
         contrast.denominator: "tubule"

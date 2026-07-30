@@ -1,9 +1,11 @@
 ---
-title: "DSP Analysis QC Report Template"
+title: "DSP DE Analysis - Kidney Test Dataset"
 format:
   html:
     code-fold: true
     embed-resources: true
+params:
+  config.path: "test_datasets/Human_Kidney/parameters/human_kidney_test.yaml"
 ---
 
 ## Load Libraries
@@ -43,12 +45,7 @@ library(scales)
 
 source("DSP_QC_functions.R")
 
-
-# For interactive runs/troubleshooting in Rstudio, switch to TRUE
-interactive.test <- FALSE
-if(interactive.test){
-  parameters <- yaml::read_yaml("test_datasets/Human_Kidney/parameters/human_kidney_test.yaml")
-}
+parameters <- yaml::read_yaml(params$config.path)
 
 # Check for output folders and create the folder if missing
 output.folders <- c(parameters$paths$project.folder, 
@@ -693,7 +690,6 @@ qc.output$plot$neg.plot
 
 
 ```
-
 
 ```{r AOI Flags}
 
@@ -1447,6 +1443,7 @@ if(parameters$sankey$combine.cols){
 ```
 
 #### PCA by Dataset Specific Field
+
 # Specific to the current dataset
 
 ```{r PCA for Pathology, fig.width=12, fig.height=8}

@@ -4,13 +4,15 @@ format:
   html:
     code-fold: true
     embed-resources: true
+params:
+  config.path: "test_datasets/Human_Kidney/parameters/human_kidney_test.yaml"
 ---
 
 # DE Analysis
 
 ```{r Setup}
-#| warning: false
-#| message: false
+#| warning: true
+#| message: true
 
 library(GeomxTools)
 library(dplyr)
@@ -33,11 +35,12 @@ library(openxlsx)
 # Source the helper functions
 source("DSP_functions.R")
 
-# For interactive runs
-interactive.test <- FALSE
-if(interactive.test){
-  parameters <- yaml::read_yaml("test_datasets/Human_Kidney/parameters/human_kidney_test.yaml")
-}
+parameters <- yaml::read_yaml(params$config.path)
+
+# Combine the common and comparison specific DE parameters
+de.comparisons <- lapply(parameters$de$comparisons, function(comparison) {
+  modifyList(parameters$de$common, comparison)
+})
 
 # Check for output folders and create the folder if missing
 output.folders <- c(parameters$paths$de.folder, 
@@ -75,9 +78,7 @@ standr.ruv.object <- readRDS(file = paste0(parameters$paths$qc.folder,
 
 ## Run DE Comparisons
 
-```{r}
-
-de.comparisons <- parameters$de$comparisons
+```{r Run DE Comparisons}
 
 de.outputs <- run_all_de_comparisons(
   de.comparisons = de.comparisons,
@@ -91,7 +92,7 @@ de.outputs <- run_all_de_comparisons(
 
 ### Venn Function
 
-```{r}
+```{r Venn Diagram Function}
 
 # Venn Diagram function
 
@@ -210,7 +211,7 @@ method_degs_venn <- function(de.results,
 
 ### Create Venn Diagrams
 
-```{r}
+```{r Create Venn Diagrams}
 
 comparison.venn.list <- list()
 
