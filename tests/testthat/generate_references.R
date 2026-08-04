@@ -20,6 +20,18 @@ for (key in names(current.files)) {
     next
   }
   
-  file.copy(src, dest, overwrite = TRUE)
-  message("Saved reference: ", dest)
+  data <- read.csv(src, stringsAsFactors = FALSE, check.names = FALSE)
+  data <- format_numeric_cols(data)
+  
+  con <- gzfile(dest, "w")
+  write.csv(data, con, row.names = FALSE, quote = FALSE)
+  close(con)
+  
+  original.size.mb <- round(file.size(src) / 1024^2, 1)
+  compressed.size.mb <- round(file.size(dest) / 1024^2, 1)
+  
+  message(
+    "Saved reference: ", dest,
+    " (", original.size.mb, " MB -> ", compressed.size.mb, " MB)"
+  )
 }
