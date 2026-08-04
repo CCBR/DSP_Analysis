@@ -7,13 +7,13 @@
 
 source("tests/testthat/helper-setup.R")
 
-if (!dir.exists(ref.dir)) {
-  dir.create(ref.dir, recursive = TRUE)
+if (!dir.exists(reference.dir)) {
+  dir.create(reference.dir, recursive = TRUE)
 }
 
 for (key in names(current.files)) {
   src <- current.files[[key]]
-  dest <- ref.files[[key]]
+  dest <- reference.files[[key]]
   
   if (!file.exists(src)) {
     warning("Current output file not found, skipping: ", src)
@@ -21,10 +21,10 @@ for (key in names(current.files)) {
   }
   
   data <- read.csv(src, stringsAsFactors = FALSE, check.names = FALSE)
-  data <- format_numeric_cols(data)
+  data <- round_numeric_cols(data)
   
   con <- gzfile(dest, "w")
-  write.csv(data, con, row.names = FALSE, quote = FALSE)
+  write.csv(data, con, row.names = FALSE)
   close(con)
   
   original.size.mb <- round(file.size(src) / 1024^2, 1)
