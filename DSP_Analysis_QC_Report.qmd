@@ -658,10 +658,17 @@ if(parameters$standr.normalization$export.ruv.object){
           file = paste0(parameters$paths$qc.folder, 
                         "StandR/standr_ruv_object.RDS"))
   
+  standr.logcounts <- as.data.frame(assay(spatial.object.standr.final,
+                                          "logcounts"))
+  standr.logcounts <- tibble::rownames_to_column(standr.logcounts, "gene")
+
+  write.csv(
+    standr.logcounts,
+    file = paste0(parameters$paths$qc.folder, "StandR/standr_logcounts.csv"),
+    row.names = FALSE
+  )
+  
 }
-
-
-
 
 ```
 
