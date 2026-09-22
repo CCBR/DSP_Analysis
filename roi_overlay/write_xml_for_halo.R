@@ -158,8 +158,32 @@ roi_coords <- coords(slide.image.overlay)
 coords_split <- split(roi_coords, roi_coords$sampleID)
 rm(roi_coords); gc()
 
-
-
+# Identify holes in the AOI for drawing inner boundaries
+find_holes <- function(mask) {
+  inverted <- 1 - mask
+  inv_labeled <- bwlabel(inverted)
+  n_inv <- max(inv_labeled)
+  
+  hole_labels <- c()
+  for (i in seq_len(n_inv)) {
+    coords_i <- which(inv_labeled == i, arr.ind = TRUE)
+    # If this "background" component touches any edge of the mask's bounding box,
+    # it's the true exterior background, not an enclosed hole — skip it
+    touches_border <- any(coords_i[,1] == 1 | coords_i[,1] == nrow(mask) |
+                           coords_i[,2] == 1 | coords_i[,2] == ncol(mask))
+    if (!touches_border) {
+      hole_labels <- c(hole_labels, i)
+    }
+  }
+  
+  if (length(hole_labels) == 0) return(list())
+  
+  hole_mask <- inv_labeled
+  hole_mask[!(hole_mask %in% hole_labels)] <- 0
+  hole_labeled <- bwlabel(hole_mask > 0)
+  
+  ocontour(hole_labeled)
+}
 
 trace_all_aois <- function(coords_split) {
   results <- list()
@@ -180,20 +204,26 @@ trace_all_aois <- function(coords_split) {
     mask[cbind(aoi_coords$xcoor - x_min + 1, aoi_coords$ycoor - y_min + 1)] <- 1L
     
     labeled <- bwlabel(mask)
-    contours_local <- ocontour(labeled)
+    outer_contours_local <- ocontour(labeled)
+    hole_contours_local  <- find_holes(mask)
     
-    # Shift contour points back to real slide-wide pixel coordinates
-    contours_global <- lapply(contours_local, function(cont) {
-      cont[,1] <- cont[,1] + x_min - 1
-      cont[,2] <- cont[,2] + y_min - 1
-      cont
-    })
+    # Shift both outer and hole contours back to real slide-wide pixel coordinates
+    shift_contours <- function(contour_list) {
+      lapply(contour_list, function(cont) {
+        cont[,1] <- cont[,1] + x_min - 1
+        cont[,2] <- cont[,2] + y_min - 1
+        cont
+      })
+    }
     
-    results[[id]] <- contours_global
+    results[[id]] <- list(
+      outer = shift_contours(outer_contours_local),
+      holes = shift_contours(hole_contours_local)
+    )
     
     if (i %% 10 == 0 || i == n) message(sprintf("Processed %d / %d AOIs", i, n))
     
-    rm(mask, labeled, contours_local)
+    rm(mask, labeled, outer_contours_local, hole_contours_local)
   }
   
   results
@@ -205,6 +235,7 @@ contour_results <- trace_all_aois(coords_split)
 # have to re-run this loop (or reload the 111M-row data) again
 saveRDS(contour_results, "/data/CCBR/spitr/spitr10_tosato/slide_images/contour_results.rds")
 
+readRDS("/data/CCBR/spitr/spitr10_tosato/slide_images/contour_results.rds")
 
 # Create a new ROI identifier
 roi_meta <- roi_meta %>% 
@@ -220,7 +251,119 @@ aoi_name_lookup <- setNames(roi_meta$ROI_Segment, roi_meta$Sample_ID)
 all(names(contour_results) %in% names(segment_lookup))
 table(segment_lookup[names(contour_results)])
 
+### Testing ###
+plot_slide_qc_by_segment <- function(contour_results, segment_lookup, image_dest, max_dim = 2000) {
+  
+  all_x <- unlist(lapply(contour_results, function(cs) {
+    c(unlist(lapply(cs$outer, function(c) c[,1])),
+      unlist(lapply(cs$holes, function(c) c[,1])))
+  }))
+  all_y <- unlist(lapply(contour_results, function(cs) {
+    c(unlist(lapply(cs$outer, function(c) c[,2])),
+      unlist(lapply(cs$holes, function(c) c[,2])))
+  }))
+  
+  x_range <- range(all_x); y_range <- range(all_y)
+  scale <- max_dim / max(diff(x_range), diff(y_range))
+  
+  seg_colors <- c("Segment 1" = "red", "Segment 2" = "blue")
+  
+  png(image_dest, width = round(diff(x_range) * scale), height = round(diff(y_range) * scale))
+  par(mar = c(0, 0, 0, 0))
+  plot(NA, xlim = x_range, ylim = rev(y_range), asp = 1,
+       xaxs = "i", yaxs = "i", axes = FALSE, xlab = "", ylab = "")
+  
+  total_holes <- 0
+  
+  for (id in names(contour_results)) {
+    seg <- segment_lookup[[id]]
+    col <- seg_colors[[seg]]
+    
+    for (cont in contour_results[[id]]$outer) {
+      polygon(cont[,1], cont[,2], border = col)
+    }
+    
+    # Holes now match their AOI's segment color, but stay dashed so they're still distinguishable
+    for (cont in contour_results[[id]]$holes) {
+      polygon(cont[,1], cont[,2], border = col, lty = 1)
+      total_holes <- total_holes + 1
+    }
+  }
+  
+  legend("topright", legend = names(seg_colors), col = seg_colors, lty = 1, bg = "white")
+  
+  dev.off()
+  
+  message(sprintf("Plotted %d AOIs, %d segment types, %d total holes detected", 
+                   length(contour_results), length(segments <- names(seg_colors)), total_holes))
+}
+
+plot_slide_qc_by_segment(contour_results = contour_results, segment_lookup = segment_lookup, image_dest = "/data/CCBR/spitr/spitr10_tosato/slide_images/full_slide12_qc.png", max_dim = 32000)
+
+
 # Write XML output file
+write_halo_xml_by_segment <- function(contour_results, segment_lookup, aoi_name_lookup, outfile) {
+  doc <- xml_new_root("Annotations")
+  
+  segments <- sort(unique(segment_lookup[names(contour_results)]))
+  aoi_ids <- names(contour_results)
+  
+  seg_linecolors <- c("Segment 1" = "16711680", "Segment 2" = "65280")  # adjust to match your explicit mapping
+  
+  # Helper: write outer + hole regions for a list of contour sets into a given Regions node
+  write_regions <- function(regions_node, aoi_contours) {
+    for (cont in aoi_contours$outer) {
+      region_node <- xml_add_child(regions_node, "Region", Type = "Polygon", 
+                                     HasEndcaps = "0", NegativeROA = "0")
+      verts_node <- xml_add_child(region_node, "Vertices")
+      for (j in seq_len(nrow(cont))) {
+        xml_add_child(verts_node, "V", X = as.character(round(cont[j,1])), 
+                                        Y = as.character(round(cont[j,2])))
+      }
+    }
+    for (cont in aoi_contours$holes) {
+      region_node <- xml_add_child(regions_node, "Region", Type = "Polygon", 
+                                     HasEndcaps = "0", NegativeROA = "1")
+      verts_node <- xml_add_child(region_node, "Vertices")
+      for (j in seq_len(nrow(cont))) {
+        xml_add_child(verts_node, "V", X = as.character(round(cont[j,1])), 
+                                        Y = as.character(round(cont[j,2])))
+      }
+    }
+  }
+  
+  # --- Segment layers ---
+  for (seg in segments) {
+    seg_aoi_ids <- names(contour_results)[segment_lookup[names(contour_results)] == seg]
+    
+    annot_node <- xml_add_child(doc, "Annotation", Name = seg, 
+                                  LineColor = as.character(seg_linecolors[[seg]]), 
+                                  Visible = "1")
+    regions_node <- xml_add_child(annot_node, "Regions")
+    
+    for (id in seg_aoi_ids) {
+      write_regions(regions_node, contour_results[[id]])
+    }
+  }
+  
+  # --- Individual AOI layers ---
+  for (aoi in aoi_ids) {
+    aoi_alt_name <- aoi_name_lookup[[aoi]]
+    
+    annot_node <- xml_add_child(doc, "Annotation", Name = aoi_alt_name, 
+                                  LineColor = "16777215",  # White
+                                  Visible = "1")
+    regions_node <- xml_add_child(annot_node, "Regions")
+    
+    write_regions(regions_node, contour_results[[aoi]])
+  }
+  
+  write_xml(doc, outfile)
+  message(sprintf("Wrote HALO XML with %d segment layers + %d individual AOI layers", 
+                   length(segments), length(aoi_ids)))
+}
+
+
 write_halo_xml_by_segment <- function(contour_results, segment_lookup, aoi_name_lookup, outfile) {
   doc <- xml_new_root("Annotations")
   
@@ -286,37 +429,6 @@ write_halo_xml_by_segment(contour_results = contour_results,
                           aoi_name_lookup = aoi_name_lookup, 
                           outfile = "/data/CCBR/spitr/spitr10_tosato/slide_images/roi_overlay_segment_aoi_slide12.xml")
 
-
-### Testing ###
-plot_slide_qc_by_segment <- function(contour_results, segment_lookup, image_dest, max_dim = 2000) {
-  all_x <- unlist(lapply(contour_results, function(cs) unlist(lapply(cs, function(c) c[,1]))))
-  all_y <- unlist(lapply(contour_results, function(cs) unlist(lapply(cs, function(c) c[,2]))))
-  
-  x_range <- range(all_x); y_range <- range(all_y)
-  scale <- max_dim / max(diff(x_range), diff(y_range))
-  
-  seg_colors <- c("Segment 1" = "red", "Segment 2" = "blue")
-  
-  png(image_dest, width = round(diff(x_range) * scale), height = round(diff(y_range) * scale))
-  par(mar = c(0, 0, 0, 0))
-  plot(NA, xlim = x_range, ylim = rev(y_range), asp = 1,
-       xaxs = "i", yaxs = "i", axes = FALSE, xlab = "", ylab = "")
-  
-  for (id in names(contour_results)) {
-    seg <- segment_lookup[[id]]
-    col <- seg_colors[[seg]]
-    for (cont in contour_results[[id]]) {
-      polygon(cont[,1], cont[,2], border = col)
-    }
-  }
-  
-  legend("topright", legend = names(seg_colors), col = seg_colors, lty = 1, bg = "white")
-  
-  dev.off()
-}
-
-plot_slide_qc_by_segment(contour_results, segment_lookup, 
-                         "/data/CCBR/spitr/spitr10_tosato/slide_images/full_slide12_qc.png")
 
 
 image_dest <- "/data/CCBR/spitr/spitr10_tosato/slide_images/test_aoi_contour_slide12.png"
