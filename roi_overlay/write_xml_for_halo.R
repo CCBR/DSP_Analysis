@@ -1,44 +1,46 @@
-#library(GeomxTools)
+# Example YAML:
+#image_folder: /data/CCBR/spitr/spitr10_tosato/slide_images
+#annotation_file: /data/CCBR/spitr/spitr10_tosato/annotations/annotation_tosato_CPTR10.xlsx
+#tiff_file_list:
+#  12:
+#    tiff.file: /data/CCBR/spitr/spitr10_tosato/slide_images/12/1_2_WTA_050124.ome.tiff
+#    slide.name: 1-2 WTA 050124
+#  1A1:
+#    tiff.file: /data/CCBR/spitr/spitr10_tosato/slide_images/1A1/1A_1_WTA_042324.ome.tiff
+#    slide.name: 1A-1 WTA 042324
+#  1B1:
+#    tiff.file: /data/CCBR/spitr/spitr10_tosato/slide_images/1B1/1B_1_WTA_042624.ome.tiff
+#    slide.name: 1B-1 WTA 042624
 
+
+## To run:
+## Rscript write_xml_for_halo.R project_params.yaml
+
+## Setup ##
 library(SpatialOmicsOverlay)
 library(ggplot2)
 library(xml2)
 library(EBImage)
 library(dplyr)
 library(readxl)
+library(yaml)
 
-tiff.file <- "/data/CCBR/spitr/spitr10_tosato/slide_images/1-2_WTA_050124.ome.tiff"
-annotation.file <- "/data/CCBR/spitr/spitr10_tosato/annotations/annotation_tosato_CPTR10_slide12.xlsx"
-lab.worksheet <- "/data/CCBR/spitr/spitr10_tosato/annotations/Tosato_WTA_20240508T1111_LabWorksheet_final.txt"
+# Read the project specific parameters
+args <- commandArgs(trailingOnly = TRUE)
 
-#annotation.df <- read_excel(annotation.file)
-#annotation.df.slide.12 <- annotation.df |> filter(`slide name` == "1-2 WTA 050124")
-#length(annotation.df.slide.12$Sample_ID)
+if (length(args) < 1) stop("Usage: Rscript write_xml_for_halo.R project_params.yaml")
+config.path <- args[1]
+config <- yaml::read_yaml(config.path)
 
-# Using the annotation excel file
-#slide.image.overlay <- readSpatialOverlay(ometiff = tiff.file, 
-#                                          annots = annotation.file, 
-#                                          slideName = "1-2 WTA 050124", 
-#                                          image = FALSE,  
-#                                          saveFile = FALSE, 
-#                                          outline = TRUE, 
-#                                          labWorksheet = FALSE)
+project.folder <- config[["image_folder"]]
+annotation.file <- config[["annotation_file"]]
+tiff.file.list <- config[["tiff_file_list"]]
 
-# Using the lab worksheet
-#slide.image.overlay <- readSpatialOverlay(ometiff = tiff.file, 
-#                                          annots = lab.worksheet, 
-#                                          slideName = "1-2 WTA 050124", 
-#                                          image = FALSE,  
-#                                          saveFile = FALSE, 
-#                                          outline = TRUE, 
-#                                          labWorksheet = TRUE)
-
-
-### readSpatialOverlay Replacement ###
-
+if (is.null(project.folder) || is.null(annotation.file) || is.null(tiff.file.list)) {
+    stop("Project config is missing one or more required fields: image_folder, annotation_file, or tiff_file_list")
+}
 
 ## Functions ##
-
 annotMatchingFixed <- function(annots, ROInum, maskText_segment, segCol = NULL) {
   if (!"ROILabel" %in% colnames(annots)) {
     stop("The column ROILabel is not in annots.")
@@ -116,48 +118,6 @@ parseOverlayAttrsFixed <- function(omexml, annots, ...) {
   return(SpatialPosition(position = AOIattrs))
 }
 
-
-
-## Main ##
-
-# --- Step 1: Read and filter annotations (same as before) ---
-annotation.df <- read_excel(annotation.file, sheet = "SegmentProperties")
-annotation.df.slide.12 <- annotation.df |> filter(`slide name` == "1-2 WTA 050124")
-
-# --- Step 2: Extract XML (same as readSpatialOverlay does internally) ---
-xml <- xmlExtraction(ometiff = tiff.file, saveFile = FALSE)
-
-# --- Step 3: Parse scan metadata (same as readSpatialOverlay does internally) ---
-scan_metadata <- SpatialOmicsOverlay:::parseScanMetadata(omexml = xml)
-
-# --- Step 4: Parse overlay data using OUR FIXED function instead of the buggy one ---
-AOIattrs <- parseOverlayAttrsFixed(omexml = xml, annots = annotation.df.slide.12)
-
-# --- Step 5: Determine overall segmentation status (same logic as readSpatialOverlay) ---
-if (any(meta(AOIattrs)$Segmentation == "Segmented")) {
-  scan_metadata[["Segmentation"]] <- "Segmented"
-} else {
-  scan_metadata[["Segmentation"]] <- "Geometric"
-}
-
-# --- Step 6: Build the SpatialOverlay object (same constructor readSpatialOverlay uses) ---
-slide.image.overlay <- SpatialOmicsOverlay:::SpatialOverlay(
-  slideName = "1-2 WTA 050124",
-  scanMetadata = scan_metadata,
-  overlayData = AOIattrs,
-  workflow = list(labWorksheet = FALSE, outline = TRUE, scaled = FALSE),
-  image = list(filePath = NULL, imagePointer = NULL, resolution = NULL)
-)
-
-# --- Step 7: Generate coordinates, same as readSpatialOverlay does when image = FALSE ---
-slide.image.overlay <- createCoordFile(overlay = slide.image.overlay, outline = TRUE)
-
-roi_meta <- meta(overlay(slide.image.overlay))
-roi_coords <- coords(slide.image.overlay)
-
-coords_split <- split(roi_coords, roi_coords$sampleID)
-rm(roi_coords); gc()
-
 # Identify holes in the AOI for drawing inner boundaries
 find_holes <- function(mask) {
   inverted <- 1 - mask
@@ -229,28 +189,6 @@ trace_all_aois <- function(coords_split) {
   results
 }
 
-contour_results <- trace_all_aois(coords_split)
-
-# Save immediately as a checkpoint — tiny file, and means you never 
-# have to re-run this loop (or reload the 111M-row data) again
-saveRDS(contour_results, "/data/CCBR/spitr/spitr10_tosato/slide_images/contour_results.rds")
-
-readRDS("/data/CCBR/spitr/spitr10_tosato/slide_images/contour_results.rds")
-
-# Create a new ROI identifier
-roi_meta <- roi_meta %>% 
-  mutate(ROI_Segment = paste0("ROI", ROILabel, "_", SegmentID))
-
-# Build a lookup: Sample_ID -> SegmentID
-segment_lookup <- setNames(roi_meta$SegmentID, roi_meta$Sample_ID)
-
-# Build a lookup: Sample_ID -> ROI_Segment # Better AOI ID Name
-aoi_name_lookup <- setNames(roi_meta$ROI_Segment, roi_meta$Sample_ID)
-
-# Confirm every traced AOI has a match
-all(names(contour_results) %in% names(segment_lookup))
-table(segment_lookup[names(contour_results)])
-
 ### Testing ###
 plot_slide_qc_by_segment <- function(contour_results, segment_lookup, image_dest, max_dim = 2000) {
   
@@ -294,12 +232,10 @@ plot_slide_qc_by_segment <- function(contour_results, segment_lookup, image_dest
   
   dev.off()
   
+  segments <- names(seg_colors)
   message(sprintf("Plotted %d AOIs, %d segment types, %d total holes detected", 
-                   length(contour_results), length(segments <- names(seg_colors)), total_holes))
+                 length(contour_results), length(segments), total_holes))
 }
-
-plot_slide_qc_by_segment(contour_results = contour_results, segment_lookup = segment_lookup, image_dest = "/data/CCBR/spitr/spitr10_tosato/slide_images/full_slide12_qc.png", max_dim = 32000)
-
 
 # Write XML output file
 write_halo_xml_by_segment <- function(contour_results, segment_lookup, aoi_name_lookup, outfile) {
@@ -363,141 +299,92 @@ write_halo_xml_by_segment <- function(contour_results, segment_lookup, aoi_name_
                    length(segments), length(aoi_ids)))
 }
 
+## Main ##
 
-write_halo_xml_by_segment <- function(contour_results, segment_lookup, aoi_name_lookup, outfile) {
-  doc <- xml_new_root("Annotations")
-  
-  segments <- sort(unique(segment_lookup[names(contour_results)]))
-  aoi_ids <- names(contour_results)
-  
-  seg_rgb <- col2rgb(rainbow(length(segments)))
-  seg_linecolors <- setNames(
-    apply(seg_rgb, 2, function(rgb) rgb[1] + rgb[2] * 256 + rgb[3] * 256^2),
-    segments
+# --- Step 1: Read and filter annotations (same as before) ---
+annotation.df <- read_excel(annotation.file, sheet = "SegmentProperties")
+
+for (tiff_id in names(tiff.file.list)) {
+  tiff_info <- tiff.file.list[[tiff_id]]
+  tiff.file <- tiff_info$tiff.file
+  slide.name <- tiff_info$slide.name
+  annotation.df.slide <- annotation.df |> filter(`slide name` == slide.name)
+
+  # --- Step 2: Extract XML (same as readSpatialOverlay does internally) ---
+  xml <- xmlExtraction(ometiff = tiff.file, saveFile = FALSE)
+
+  # --- Step 3: Parse scan metadata (same as readSpatialOverlay does internally) ---
+  scan_metadata <- SpatialOmicsOverlay:::parseScanMetadata(omexml = xml)
+
+  # --- Step 4: Parse overlay data using OUR FIXED function instead of the buggy one ---
+  AOIattrs <- parseOverlayAttrsFixed(omexml = xml, annots = annotation.df.slide)
+
+  # --- Step 5: Determine overall segmentation status (same logic as readSpatialOverlay) ---
+  if (any(meta(AOIattrs)$Segmentation == "Segmented")) {
+    scan_metadata[["Segmentation"]] <- "Segmented"
+  } else {
+    scan_metadata[["Segmentation"]] <- "Geometric"
+  }
+
+  # --- Step 6: Build the SpatialOverlay object (same constructor readSpatialOverlay uses) ---
+  slide.image.overlay <- SpatialOmicsOverlay:::SpatialOverlay(
+    slideName = slide.name,
+    scanMetadata = scan_metadata,
+    overlayData = AOIattrs,
+    workflow = list(labWorksheet = FALSE, outline = TRUE, scaled = FALSE),
+    image = list(filePath = NULL, imagePointer = NULL, resolution = NULL)
   )
-  
-  # --- Segment layers ---
-  for (seg in segments) {
-    seg_aoi_ids <- names(contour_results)[segment_lookup[names(contour_results)] == seg]
-    
-    annot_node <- xml_add_child(doc, "Annotation", Name = seg, 
-                                LineColor = as.character(seg_linecolors[[seg]]), 
-                                Visible = "1")
-    regions_node <- xml_add_child(annot_node, "Regions")
-    
-    for (id in seg_aoi_ids) {
-      for (cont in contour_results[[id]]) {
-        region_node <- xml_add_child(regions_node, "Region", Type = "Polygon", 
-                                     HasEndcaps = "0", NegativeROA = "0")
-        verts_node <- xml_add_child(region_node, "Vertices")
-        for (j in seq_len(nrow(cont))) {
-          xml_add_child(verts_node, "V", X = as.character(round(cont[j,1])), 
-                        Y = as.character(round(cont[j,2])))
-        }
-      }
-    }
+
+  # --- Step 7: Generate coordinates, same as readSpatialOverlay does when image = FALSE ---
+  slide.image.overlay <- createCoordFile(overlay = slide.image.overlay, outline = TRUE)
+
+  roi_meta <- meta(overlay(slide.image.overlay))
+  roi_coords <- coords(slide.image.overlay)
+
+  output_dir <- file.path(project.folder, tiff_id)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  contour_rds <- file.path(
+    output_dir,
+    paste0(tools::file_path_sans_ext(basename(tiff.file)), "_contour_results.rds")
+  )
+
+  if (file.exists(contour_rds)) {
+    contour_results <- readRDS(contour_rds)
+    message(sprintf("Loaded existing contour results for %s (%s) -> %s", basename(tiff.file), tiff_id, contour_rds))
+  } else {
+    coords_split <- split(roi_coords, roi_coords$sampleID)
+    #rm(roi_coords); gc()
+
+    contour_results <- trace_all_aois(coords_split)
+
+    saveRDS(contour_results, contour_rds)
+    message(sprintf("Saved contour results for %s (%s) -> %s", basename(tiff.file), tiff_id, contour_rds))
   }
-  
-  # --- Individual AOI layers ---
-  for (aoi in aoi_ids) {
-    
-    aoi_alt_name <- aoi_name_lookup[[aoi]]
-    
-    annot_node <- xml_add_child(doc, "Annotation", Name = aoi_alt_name, 
-                                LineColor = "16777215",  # White
-                                Visible = "1")
-    regions_node <- xml_add_child(annot_node, "Regions")
-    
-    for (cont in contour_results[[aoi]]) {
-      region_node <- xml_add_child(regions_node, "Region", Type = "Polygon", 
-                                   HasEndcaps = "0", NegativeROA = "0")
-      verts_node <- xml_add_child(region_node, "Vertices")
-      for (j in seq_len(nrow(cont))) {
-        xml_add_child(verts_node, "V", X = as.character(round(cont[j,1])), 
-                      Y = as.character(round(cont[j,2])))
-      }
-    }
+
+  roi_meta <- roi_meta %>%
+    mutate(ROI_Segment = paste0("ROI", ROILabel, "_", SegmentID))
+
+  segment_lookup <- setNames(roi_meta$SegmentID, roi_meta$Sample_ID)
+  aoi_name_lookup <- setNames(roi_meta$ROI_Segment, roi_meta$Sample_ID)
+
+  if (!all(names(contour_results) %in% names(segment_lookup))) {
+    warning(sprintf("Some traced AOIs do not have a matching Sample_ID in %s; check ROI metadata.", tiff_id))
   }
-  
-  write_xml(doc, outfile)
-  message(sprintf("Wrote HALO XML with %d segment layers + %d individual AOI layers", 
-                  length(segments), length(aoi_ids)))
-}
+  print(table(segment_lookup[names(contour_results)]))
 
-write_halo_xml_by_segment(contour_results = contour_results, 
-                          segment_lookup = segment_lookup, 
-                          aoi_name_lookup = aoi_name_lookup, 
-                          outfile = "/data/CCBR/spitr/spitr10_tosato/slide_images/roi_overlay_segment_aoi_slide12.xml")
+  qc_png <- file.path(output_dir, paste0("full_slide_", tiff_id, "_qc.png"))
+  plot_slide_qc_by_segment(contour_results = contour_results,
+                           segment_lookup = segment_lookup,
+                           image_dest = qc_png,
+                           max_dim = 32000)
 
-
-
-image_dest <- "/data/CCBR/spitr/spitr10_tosato/slide_images/test_aoi_contour_slide12.png"
-test_aoi_overlay <- function(coords_split, 
-                             image_dest) {
-  
-  test_id <- names(coords_split)[1]
-  test_coords <- coords_split[[test_id]]
-  
-  # Shift coordinates so the bounding box starts at (1,1) instead of raw pixel coords,
-  # since we only need a local grid sized to this AOI, not the whole slide
-  x_min <- min(test_coords$xcoor); y_min <- min(test_coords$ycoor)
-  x_max <- max(test_coords$xcoor); y_max <- max(test_coords$ycoor)
-  
-  width  <- x_max - x_min + 1
-  height <- y_max - y_min + 1
-  
-  mask <- matrix(0L, nrow = width, ncol = height)  # (x, y), matching EBImage's convention
-  mask[cbind(test_coords$xcoor - x_min + 1, test_coords$ycoor - y_min + 1)] <- 1L
-  
-  labeled <- bwlabel(mask)
-  num_blobs <- max(labeled)
-  
-  contours <- ocontour(labeled)
-  
-  # Scale PNG canvas to match the AOI's true aspect ratio, so asp = 1 
-  # never needs to expand either axis beyond its data range
-  png_height <- 800
-  png_width  <- round(png_height * (width / height))
-  
-  png(filename = image_dest, width = png_width, height = png_height)
-  
-  par(mar = c(0, 0, 0, 0))  # no margins, so the plot region fills the canvas exactly
-  
-  plot(NA, xlim = c(0, width), ylim = c(0, height), asp = 1,
-       xaxs = "i", yaxs = "i", 
-       axes = FALSE, xlab = "", ylab = "")
-  
-  for (cont in contours) {
-    # Flip y to match image coordinate convention (origin top-left, y increases downward)
-    polygon(cont[,1], height - cont[,2], border = "red")
-  }
-  
-  dev.off()
-  
-  message(sprintf("AOI: %s | %d blob(s) | dims %dx%d", test_id, num_blobs, width, height))
+  xml_outfile <- file.path(output_dir, paste0("roi_overlay_segment_aoi_", tiff_id, ".xml"))
+  write_halo_xml_by_segment(contour_results = contour_results,
+                           segment_lookup = segment_lookup,
+                           aoi_name_lookup = aoi_name_lookup,
+                           outfile = xml_outfile)
 }
 
 
-test_aoi_overlay(coords_split = coords_split, image_dest = "/data/CCBR/spitr/spitr10_tosato/slide_images/test_aoi_contour_slide12.png")
 
-
-
-# Check specific ROI in xml
-
-xml <- xmlExtraction(ometiff = tiff.file, saveFile = FALSE)
-
-ROIs <- xml[which(names(xml) == "ROI")]
-
-# Since names aren't unique yet, rename first
-names(ROIs) <- paste0(names(ROIs), 1:(length(ROIs)))
-
-# Look at ROI0 specifically (first one, seems to be ROI "001" per the Label we just saw)
-roi_test <- ROIs$ROI4$Union
-masks <- which(names(roi_test) == "Mask")
-masks  # how many masks does this ROI have, and at what positions
-
-for (m in masks) {
-  cat("Mask at position", m, ":\n")
-  print(roi_test[[m]]$.attrs)
-  cat("\n")
-}
