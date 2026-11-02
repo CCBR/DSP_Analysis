@@ -1852,7 +1852,8 @@ run_default_de <- function(lmm.input, comp.parameters) {
     regions = comp.parameters$regions,
     group.col = comp.parameters$group.col,
     groups = comp.parameters$groups,
-    n.cores = parallel::detectCores()
+    n.cores = parallel::detectCores(), 
+    slide.col = parameters$de$common$batch.col
   )
   
   results.df <- standardize_default_results(results.list$results)

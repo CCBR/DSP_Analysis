@@ -778,7 +778,7 @@ aoi.detection.summary <- pData(loq.detection.output$object) %>%
 #| message: false
 
 # Filter the data using the cutoff for gene detection rate
-aoi.gene.rate.cutoff <- parameters$default.filtering$gene.detection.cutoff
+aoi.gene.rate.cutoff <- parameters$default.filtering$aoi.detection.cutoff
 
 object <- loq.detection.output$object
 
@@ -886,7 +886,7 @@ gene.detection.summary <- fData(loq.detection.output.aoi.filtered$object) %>%
 #| message: false
 
 # Set the cutoff for gene detection (percentage)
-gene.detection.cutoff <- parameters$default.filtering$aoi.detection.cutoff
+gene.detection.cutoff <- parameters$default.filtering$gene.detection.cutoff
 
 # Manually include the negative control probe, for downstream use
 negative.probe.fData <- subset(fData(loq.detection.output.aoi.filtered$object), CodeClass == "Negative")
