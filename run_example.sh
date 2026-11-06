@@ -1,3 +1,7 @@
-quarto render DSP_Analysis_QC_Report.qmd -P config.path:test_datasets/Human_Kidney/parameters/human_kidney_test.yaml
+set -e
 
-quarto render DSP_DE_Analysis_Report.qmd -P config.path:test_datasets/Human_Kidney/parameters/human_kidney_test.yaml
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+Rscript render_quarto_report.R qc test_datasets/Human_Kidney/input/parameters/human_kidney_test.yaml
+
+Rscript render_quarto_report.R de test_datasets/Human_Kidney/input/parameters/human_kidney_test.yaml
