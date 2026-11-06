@@ -50,7 +50,6 @@ parameters <- yaml::read_yaml(params$config.path)
 # Check for output folders and create the folder if missing
 output.folders <- c(parameters$paths$project.folder, 
                     paste0(parameters$paths$qc.folder, parameters$paths$run.folder), 
-                    paste0(parameters$paths$project.folder, parameters$initialization$dcc.folder), 
                     paste0(parameters$paths$qc.folder, "StandR/"),
                     paste0(parameters$paths$qc.folder, "StandR/input_files/"), 
                     paste0(parameters$paths$qc.folder, "pca/"))
