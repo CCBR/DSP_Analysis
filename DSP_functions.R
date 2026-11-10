@@ -1268,6 +1268,126 @@ de_method_label <- function(de.method) {
   }
 }
 
+describe_default_de_model <- function(analysis.type, execution.output) {
+  mixed.effect <- any(grepl(
+    "Running DE with linear mixed-effect model",
+    execution.output,
+    fixed = TRUE
+  ))
+  linear <- any(grepl(
+    "Running DE with linear model (no mixed-effect)",
+    execution.output,
+    fixed = TRUE
+  ))
+
+  descriptions <- character()
+
+  if (mixed.effect) {
+    if (identical(analysis.type, "Within Groups")) {
+      descriptions <- c(
+        descriptions,
+        "Linear mixed-effects model: ~ sub.group + (1 + sub.group | slide)"
+      )
+    } else {
+      descriptions <- c(
+        descriptions,
+        "Linear mixed-effects model: ~ main.group + (1 | slide)"
+      )
+    }
+  }
+
+  if (linear) {
+    if (!identical(analysis.type, "Within Groups")) {
+      stop(
+        "DSPWorkflow reported a non-mixed model for an unsupported analysis type: ",
+        analysis.type
+      )
+    }
+
+    descriptions <- c(
+      descriptions,
+      "Linear model (no random effect): ~ sub.group"
+    )
+  }
+
+  if (length(descriptions) == 0) {
+    stop(
+      "Could not determine the model used by DSPWorkflow::diffExpr(). ",
+      "Its execution output did not identify a statistical model."
+    )
+  }
+
+  paste(unique(descriptions), collapse = "; ")
+}
+
+describe_standr_model <- function(design, contrast, block.field = NULL) {
+  if (!is.matrix(design) || is.null(colnames(design))) {
+    stop("StandR design must be a matrix with named model columns.")
+  }
+
+  if (!is.matrix(contrast) ||
+      is.null(rownames(contrast)) ||
+      is.null(colnames(contrast)) ||
+      !all(rownames(contrast) %in% colnames(design))) {
+    stop("StandR contrast must be a named matrix matching the design columns.")
+  }
+
+  contrast.descriptions <- vapply(seq_len(ncol(contrast)), function(i) {
+    coefficients <- contrast[, i]
+    included <- coefficients != 0
+
+    paste0(
+      colnames(contrast)[i],
+      ": ",
+      paste(
+        paste0(rownames(contrast)[included], "=", coefficients[included]),
+        collapse = ", "
+      )
+    )
+  }, character(1))
+
+  block.description <- if (is.null(block.field)) {
+    "no blocking"
+  } else {
+    paste0("blocking by ", block.field, " with duplicateCorrelation")
+  }
+
+  paste0(
+    "limma-voom linear model; design matrix columns: ",
+    paste(colnames(design), collapse = ", "),
+    "; contrast: ",
+    paste(contrast.descriptions, collapse = "; "),
+    "; ",
+    block.description
+  )
+}
+
+print_de_model <- function(method.output, de.method) {
+  model <- method.output$model
+
+  if (is.character(model) &&
+      length(model) == 1L &&
+      !is.na(model) &&
+      nzchar(trimws(model))) {
+    cat(
+      "Model used (",
+      de_method_label(de.method),
+      "): ",
+      model,
+      "\n\n",
+      sep = ""
+    )
+  } else {
+    cat(
+      "Model unavailable (",
+      de_method_label(de.method),
+      "): This cached result predates model metadata. Set ",
+      "overwrite.results = TRUE to rerun this method and record its model.\n\n",
+      sep = ""
+    )
+  }
+}
+
 
 
 # DE result formatting helpers
@@ -1845,21 +1965,38 @@ make_standr_gsea_log_counts <- function(v,
 
 # Run your original DSPWorkflow::diffExpr() method.
 run_default_de <- function(lmm.input, comp.parameters) {
-  results.list <- diffExpr(
-    object = lmm.input$subset.object,
-    analysis.type = default_if_null(comp.parameters$analysis.type, "Within Groups"),
-    region.col = comp.parameters$region.col,
-    regions = comp.parameters$regions,
-    group.col = comp.parameters$group.col,
-    groups = comp.parameters$groups,
-    n.cores = parallel::detectCores()
+  analysis.type <- default_if_null(
+    comp.parameters$analysis.type,
+    "Within Groups"
   )
-  
+
+  execution.output <- capture.output(
+    results.list <- diffExpr(
+      object = lmm.input$subset.object,
+      analysis.type = analysis.type,
+      region.col = comp.parameters$region.col,
+      regions = comp.parameters$regions,
+      group.col = comp.parameters$group.col,
+      groups = comp.parameters$groups,
+      n.cores = parallel::detectCores()
+    )
+  )
+
+  if (length(execution.output) > 0) {
+    cat(execution.output, sep = "\n")
+    cat("\n")
+  }
+
   results.df <- standardize_default_results(results.list$results)
-  
+  model <- describe_default_de_model(
+    analysis.type = analysis.type,
+    execution.output = execution.output
+  )
+
   list(
     results = results.df,
-    results.raw = results.list
+    results.raw = results.list,
+    model = model
   )
 }
 
@@ -1984,7 +2121,13 @@ run_standr_de <- function(standr.object, comp.parameters) {
       block <- NULL
     }
   }
-  
+
+  model <- describe_standr_model(
+    design = design,
+    contrast = contr.matrix,
+    block.field = if (is.null(block)) NULL else standr.parameters$block.field
+  )
+
   plot.voom <- default_if_null(standr.parameters$plot.voom, FALSE)
   
   if (!is.null(block)) {
@@ -2104,6 +2247,7 @@ run_standr_de <- function(standr.object, comp.parameters) {
     results.full = results.full,
     design = design,
     contrast.matrix = contr.matrix,
+    model = model,
     keep = keep,
     removed.genes = removed.genes,
     corfit1 = corfit1,
@@ -2296,6 +2440,8 @@ run_de_comparison <- function(comp.parameters,
       }
     }
     
+    print_de_model(method.output, de.method)
+
 
     # DEG summary
 
