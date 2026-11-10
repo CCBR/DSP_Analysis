@@ -80,6 +80,66 @@ test_that("default DE runner records the model selected by diffExpr", {
   )
 })
 
+test_that("default DE runner accepts a custom formula and comparison variable", {
+  original.diff_expr <- de.model.test.env$diffExpr
+  original.mixed_model_de <- de.model.test.env$mixedModelDE
+  on.exit({
+    de.model.test.env$diffExpr <- original.diff_expr
+    de.model.test.env$mixedModelDE <- original.mixed_model_de
+  }, add = TRUE)
+
+  de.model.test.env$diffExpr <- function(...) {
+    stop("diffExpr should not run when model.formula is configured.")
+  }
+
+  calls <- new.env(parent = emptyenv())
+  de.model.test.env$mixedModelDE <- function(object, elt, modelFormula,
+                                              groupVar, ...) {
+    calls$object <- object
+    calls$elt <- elt
+    calls$formula <- modelFormula
+    calls$group.var <- groupVar
+    mixed.results <- matrix(
+      vector("list", 4),
+      nrow = 2,
+      dimnames = list(c("anova", "lsmeans"), c("gene1", "gene2"))
+    )
+    mixed.results["lsmeans", 1] <- list(matrix(
+      c(1.23456, 0.012345),
+      nrow = 1,
+      dimnames = list("treatmentB - treatmentA", c("Estimate", "Pr(>|t|)"))
+    ))
+    mixed.results["lsmeans", 2] <- list(matrix(
+      c(-0.76543, 0.02055),
+      nrow = 1,
+      dimnames = list("treatmentB - treatmentA", c("Estimate", "Pr(>|t|)"))
+    ))
+    mixed.results
+  }
+
+  custom.result <- de.model.test.env$run_default_de(
+    lmm.input = list(subset.object = "subset-object"),
+    comp.parameters = list(
+      model.formula = "treatment * area + (1 | mouse_id)",
+      group.var = "treatment"
+    )
+  )
+
+  expect_identical(calls$object, "subset-object")
+  expect_identical(calls$elt, "log_q")
+  expect_equal(
+    paste(deparse(calls$formula), collapse = ""),
+    "~treatment * area + (1 | mouse_id)"
+  )
+  expect_identical(calls$group.var, "treatment")
+  expect_equal(custom.result$results$gene, c("gene1", "gene2"))
+  expect_equal(custom.result$results$logfc, c(1.235, -0.765))
+  expect_equal(custom.result$results$pval, c(0.0123, 0.0205))
+  expect_equal(custom.result$results$padj, c(0.0205, 0.0205))
+  expect_match(custom.result$model, "treatment \\* area")
+  expect_match(custom.result$model, "pairwise contrasts by treatment")
+})
+
 test_that("StandR model description uses the design and contrast matrices", {
   design <- matrix(
     c(1, 0, 0.5, 0, 1, -0.5),

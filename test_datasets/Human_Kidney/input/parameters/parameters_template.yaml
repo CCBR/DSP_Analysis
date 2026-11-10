@@ -238,6 +238,10 @@ de:
       regions: ["PanCK_pos", "PanCK_neg"]
       group.col: "region"
       groups: ["tubule"]
+      # Optional custom model for the default DE method. Set both fields to
+      # use a one-sided formula and the fixed-effect variable to compare.
+      # model.formula: "treatment * area + (1 | mouse_id)"
+      # group.var: "treatment"
       legend.title: "Expression in PanCK+"
 
       # StandR parameters unique to this comparison (merged with common.standr)

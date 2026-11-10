@@ -1963,35 +1963,111 @@ make_standr_gsea_log_counts <- function(v,
 # DE method runners
 
 
-# Run your original DSPWorkflow::diffExpr() method.
+# Run the default DSPWorkflow method, optionally using a custom model formula.
 run_default_de <- function(lmm.input, comp.parameters) {
   analysis.type <- default_if_null(
     comp.parameters$analysis.type,
     "Within Groups"
   )
 
-  execution.output <- capture.output(
-    results.list <- diffExpr(
-      object = lmm.input$subset.object,
-      analysis.type = analysis.type,
-      region.col = comp.parameters$region.col,
-      regions = comp.parameters$regions,
-      group.col = comp.parameters$group.col,
-      groups = comp.parameters$groups,
-      n.cores = parallel::detectCores()
+  if (is.null(comp.parameters$model.formula)) {
+    execution.output <- capture.output(
+      results.list <- diffExpr(
+        object = lmm.input$subset.object,
+        analysis.type = analysis.type,
+        region.col = comp.parameters$region.col,
+        regions = comp.parameters$regions,
+        group.col = comp.parameters$group.col,
+        groups = comp.parameters$groups,
+        n.cores = parallel::detectCores()
+      )
     )
-  )
 
-  if (length(execution.output) > 0) {
-    cat(execution.output, sep = "\n")
-    cat("\n")
+    if (length(execution.output) > 0) {
+      cat(execution.output, sep = "\n")
+      cat("\n")
+    }
+
+    results.df <- standardize_default_results(results.list$results)
+    model <- describe_default_de_model(
+      analysis.type = analysis.type,
+      execution.output = execution.output
+    )
+  } else {
+    if (is.null(comp.parameters$group.var) ||
+        length(comp.parameters$group.var) != 1L ||
+        !is.character(comp.parameters$group.var) ||
+        is.na(comp.parameters$group.var) ||
+        !nzchar(trimws(comp.parameters$group.var))) {
+      stop(
+        "A single non-empty group.var is required when model.formula is set."
+      )
+    }
+
+    if (!is.character(comp.parameters$model.formula) ||
+        length(comp.parameters$model.formula) != 1L ||
+        is.na(comp.parameters$model.formula) ||
+        !nzchar(trimws(comp.parameters$model.formula))) {
+      stop("model.formula must be a single non-empty formula string.")
+    }
+
+    model.formula <- trimws(comp.parameters$model.formula)
+    if (!startsWith(model.formula, "~")) {
+      model.formula <- paste("~", model.formula)
+    }
+    model.formula <- stats::as.formula(model.formula)
+    if (length(model.formula) != 2L) {
+      stop("model.formula must be a one-sided formula.")
+    }
+
+    execution.output <- capture.output(
+      results.list <- mixedModelDE(
+        object = lmm.input$subset.object,
+        elt = "log_q",
+        modelFormula = model.formula,
+        groupVar = comp.parameters$group.var,
+        nCores = parallel::detectCores(),
+        multiCore = TRUE,
+        pAdjust = "fdr",
+        pairwise = TRUE
+      )
+    )
+
+    if (length(execution.output) > 0) {
+      cat(execution.output, sep = "\n")
+      cat("\n")
+    }
+
+    lmm.results.summary <- do.call(rbind, results.list["lsmeans", ])
+    lmm.results.summary <- as.data.frame(lmm.results.summary)
+    lmm.results.summary$gene <- unlist(lapply(
+      colnames(results.list),
+      rep,
+      nrow(results.list["lsmeans", ][[1]])
+    ))
+    lmm.results.summary$adj_pval <- p.adjust(
+      lmm.results.summary[["Pr(>|t|)"]],
+      method = "fdr"
+    )
+    lmm.results.summary$logfc <- lmm.results.summary$Estimate
+
+    results.df <- data.frame(
+      gene = lmm.results.summary$gene,
+      logfc = as.numeric(format(lmm.results.summary$logfc, digits = 3)),
+      pval = as.numeric(format(
+        lmm.results.summary[["Pr(>|t|)"]],
+        digits = 3
+      )),
+      padj = as.numeric(format(lmm.results.summary$adj_pval, digits = 3)),
+      stringsAsFactors = FALSE
+    )
+    model <- paste0(
+      "Custom linear mixed-effects model: ",
+      paste(deparse(model.formula), collapse = ""),
+      "; pairwise contrasts by ",
+      comp.parameters$group.var
+    )
   }
-
-  results.df <- standardize_default_results(results.list$results)
-  model <- describe_default_de_model(
-    analysis.type = analysis.type,
-    execution.output = execution.output
-  )
 
   list(
     results = results.df,

@@ -168,7 +168,7 @@ de:
     n.labels: 10
 
     write.results: true
-    overwrite.results: false
+    overwrite.results: true
 
     title.size: 22
     legend.coordinates: [0.99, 0.1]
