@@ -223,3 +223,77 @@ test_that("DKD Glomerulus vs Tubule (standr method) DE results match reference",
   
   expect_table_equal(current, ref, id.col = "gene")
 })
+
+test_that("report DEG selection applies cutoffs without changing DE results", {
+  results <- data.frame(
+    gene = c("up", "down", "padj_boundary", "fc_boundary", "not_significant"),
+    logfc = c(1.2, -1.4, 3, 1, 2),
+    padj = c(0.01, 0.02, 0.05, 0.01, 0.06)
+  )
+  original.results <- results
+
+  degs <- de.model.test.env$select_degs_for_report(
+    results.df = results,
+    fc.limit = 1,
+    padj.limit = 0.05
+  )
+
+  expect_identical(degs$gene, c("up", "down"))
+  expect_identical(results, original.results)
+})
+
+test_that("static and interactive volcano builders preserve their intended layers", {
+  results <- data.frame(
+    gene = c("up", "down", "not_significant"),
+    logfc = c(2, -2, 0.25),
+    padj = c(0.01, 0.02, 0.8)
+  )
+  parameters <- list(
+    contrast.name = "test_comparison",
+    fc.limit = 1,
+    padj.limit = 0.05,
+    legend.coordinates = NULL
+  )
+
+  static.plot <- de.model.test.env$make_de_volcano(
+    results.df = results,
+    comp.parameters = parameters
+  )
+  interactive.plot <- de.model.test.env$make_de_volcano_interactive(
+    results.df = results,
+    comp.parameters = parameters
+  )
+
+  expect_true(any(vapply(
+    static.plot$layers,
+    function(layer) inherits(layer$geom, "GeomTextRepel"),
+    logical(1)
+  )))
+  expect_false(any(vapply(
+    interactive.plot$layers,
+    function(layer) inherits(layer$geom, "GeomTextRepel"),
+    logical(1)
+  )))
+  expect_identical(
+    rlang::as_name(interactive.plot$mapping$text),
+    "gene"
+  )
+  interactive.widget <- plotly::ggplotly(interactive.plot, tooltip = "text")
+  hover.genes <- unlist(
+    lapply(interactive.widget$x$data, `[[`, "text"),
+    use.names = FALSE
+  )
+  expect_setequal(hover.genes[nzchar(hover.genes)], results$gene)
+  expect_identical(
+    interactive.plot$data$de_direction,
+    c("UP", "DOWN", "NONE")
+  )
+  expect_identical(
+    ggplot2::ggplot_build(interactive.plot)$data[[3]]$y,
+    -log10(results$padj)
+  )
+  expect_identical(
+    ggplot2::ggplot_build(interactive.plot)$data[[3]]$colour,
+    c("red", "blue", "gray60")
+  )
+})

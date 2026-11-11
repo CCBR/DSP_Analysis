@@ -808,6 +808,7 @@ improved_make_volcano <- function(lmm.results,
                          title.size = 16,
                          legend.title, 
                          fc.limit = 1, 
+                         padj.limit = 0.05,
                          custom.gene.labels = NULL, 
                          remove.controls = FALSE, 
                          remove.genes = NULL, 
@@ -852,9 +853,9 @@ improved_make_volcano <- function(lmm.results,
   
   # Create a column for direction of DEGs
   lmm.results$de_direction <- "NONE"
-  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+  lmm.results$de_direction[lmm.results$padj < padj.limit &
                              lmm.results$logfc > fc.limit] <- "UP"
-  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+  lmm.results$de_direction[lmm.results$padj < padj.limit &
                              lmm.results$logfc < -fc.limit] <- "DOWN"
   
   # Count DEGs for legend labels
@@ -909,7 +910,7 @@ improved_make_volcano <- function(lmm.results,
                                                     col = de_direction, 
                                                     label = deglabel)) +
         geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
-        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        geom_hline(yintercept = -log10(padj.limit), col = dotted.line.color, linetype = 'dashed') +
         labs(x = x.lab,
              y = y.lab, 
              title = title) + 
@@ -955,7 +956,7 @@ improved_make_volcano <- function(lmm.results,
                                                     col = de_direction, 
                                                     label = deglabel)) +
         geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
-        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        geom_hline(yintercept = -log10(padj.limit), col = dotted.line.color, linetype = 'dashed') +
         labs(x = x.lab,
              y = y.lab, 
              title = title) + 
@@ -1041,7 +1042,7 @@ improved_make_volcano <- function(lmm.results,
                                                 col = custom.label, 
                                                 alpha = 1)) +
       geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
-      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      geom_hline(yintercept = -log10(padj.limit), col = "gray", linetype = 'dashed') +
       labs(x = "log2 Fold Change",
            y = "-log10 adjusted p-value", 
            title = title) + 
@@ -1088,6 +1089,116 @@ improved_make_volcano <- function(lmm.results,
   return(volcano.plot)
   
 } 
+
+improved_make_volcano_interactive <- function(lmm.results,
+                                              title,
+                                              title.size = 16,
+                                              legend.title,
+                                              fc.limit = 1,
+                                              padj.limit = 0.05,
+                                              remove.genes = NULL,
+                                              x.lab = "Log2 Fold Change",
+                                              y.lab = "-Log10 adjusted p-value",
+                                              dotted.line.color = "gray",
+                                              alpha = 1,
+                                              nonDE.color = "gray",
+                                              upDE.color = "violetred4",
+                                              downDE.color = "steelblue4",
+                                              axis.tick.label.size = 8,
+                                              legend.text.size = 8,
+                                              axis.title.size = 8) {
+  if (!is.null(remove.genes)) {
+    lmm.results <- lmm.results[
+      !rownames(lmm.results) %in% remove.genes,
+      ,
+      drop = FALSE
+    ]
+  }
+
+  lmm.results$de_direction <- "NONE"
+  lmm.results$de_direction[
+    lmm.results$padj < padj.limit & lmm.results$logfc > fc.limit
+  ] <- "UP"
+  lmm.results$de_direction[
+    lmm.results$padj < padj.limit & lmm.results$logfc < -fc.limit
+  ] <- "DOWN"
+
+  n_up <- sum(lmm.results$de_direction == "UP", na.rm = TRUE)
+  n_down <- sum(lmm.results$de_direction == "DOWN", na.rm = TRUE)
+  direction.labels <- c(
+    "UP" = paste0("UP (n = ", n_up, ")"),
+    "NONE" = "NONE",
+    "DOWN" = paste0("DOWN (n = ", n_down, ")")
+  )
+  direction.colors <- c(
+    "DOWN" = downDE.color,
+    "NONE" = nonDE.color,
+    "UP" = upDE.color
+  )
+  log2.scale <- ceiling(max(abs(lmm.results$logfc)))
+
+  ggplot2::ggplot(
+    lmm.results,
+    ggplot2::aes(
+      x = logfc,
+      y = -log10(padj),
+      color = de_direction,
+      text = gene
+    )
+  ) +
+    ggplot2::geom_vline(
+      xintercept = c(-fc.limit, fc.limit),
+      color = dotted.line.color,
+      linetype = "dashed"
+    ) +
+    ggplot2::geom_hline(
+      yintercept = -log10(padj.limit),
+      color = dotted.line.color,
+      linetype = "dashed"
+    ) +
+    ggplot2::geom_point(size = 2, alpha = alpha) +
+    ggplot2::scale_color_manual(
+      legend.title,
+      values = direction.colors,
+      breaks = c("UP", "NONE", "DOWN"),
+      labels = direction.labels[c("UP", "NONE", "DOWN")]
+    ) +
+    ggplot2::scale_x_continuous(
+      breaks = scales::breaks_pretty(n = 7),
+      limits = c(-log2.scale, log2.scale)
+    ) +
+    ggplot2::labs(
+      x = x.lab,
+      y = y.lab,
+      title = title
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      panel.grid.major = ggplot2::element_line(
+        color = "grey90",
+        linewidth = 0.5
+      ),
+      plot.title = ggplot2::element_text(
+        hjust = 0.5,
+        face = "bold",
+        size = title.size
+      ),
+      axis.title = ggplot2::element_text(
+        face = "bold",
+        size = axis.title.size
+      ),
+      axis.text = ggplot2::element_text(size = axis.tick.label.size),
+      legend.position = "right",
+      legend.text = ggplot2::element_text(
+        face = "bold",
+        size = legend.text.size
+      ),
+      legend.title = ggplot2::element_text(
+        face = "bold",
+        size = legend.text.size
+      )
+    )
+}
 
 make_dual_volcano <- function(lmm.results.1, 
                               lmm.results.2,
@@ -1553,6 +1664,19 @@ get_top_gene_labels <- function(results.df,
   ))
 }
 
+select_degs_for_report <- function(results.df,
+                                   fc.limit = 1.5,
+                                   padj.limit = 0.05) {
+  results.df %>%
+    dplyr::filter(
+      !is.na(.data$logfc),
+      !is.na(.data$padj),
+      .data$padj < padj.limit,
+      abs(.data$logfc) > fc.limit
+    ) %>%
+    dplyr::arrange(.data$padj, dplyr::desc(abs(.data$logfc)))
+}
+
 
 # Wrapper around improved_make_volcano() function.
 # This keeps volcano parameter handling in one place.
@@ -1570,6 +1694,7 @@ make_de_volcano <- function(results.df,
     title.size = default_if_null(comp.parameters$title.size, 22),
     legend.title = default_if_null(comp.parameters$legend.title, "Expression"),
     fc.limit = default_if_null(comp.parameters$fc.limit, 1.5),
+    padj.limit = default_if_null(comp.parameters$padj.limit, 0.05),
     custom.gene.labels = custom.labels,
     remove.controls = default_if_null(comp.parameters$remove.controls, FALSE),
     remove.genes = default_if_null(comp.parameters$remove.genes, NULL),
@@ -1593,6 +1718,33 @@ make_de_volcano <- function(results.df,
   )
 }
 
+make_de_volcano_interactive <- function(results.df, comp.parameters) {
+  improved_make_volcano_interactive(
+    lmm.results = results.df,
+    title = default_if_null(
+      comp.parameters$volcano.title,
+      default_if_null(comp.parameters$heading, comp.parameters$contrast.name)
+    ),
+    title.size = default_if_null(comp.parameters$title.size, 22),
+    legend.title = default_if_null(comp.parameters$legend.title, "Expression"),
+    fc.limit = default_if_null(comp.parameters$fc.limit, 1.5),
+    padj.limit = default_if_null(comp.parameters$padj.limit, 0.05),
+    remove.genes = default_if_null(comp.parameters$remove.genes, NULL),
+    x.lab = default_if_null(comp.parameters$x.lab, "Log2 Fold Change"),
+    y.lab = default_if_null(comp.parameters$y.lab, "-Log10 adjusted p-value"),
+    dotted.line.color = default_if_null(comp.parameters$dotted.line.color, "black"),
+    alpha = default_if_null(comp.parameters$alpha, 1),
+    nonDE.color = default_if_null(comp.parameters$nonDE.color, "gray60"),
+    upDE.color = default_if_null(comp.parameters$upDE.color, "red"),
+    downDE.color = default_if_null(comp.parameters$downDE.color, "blue"),
+    axis.tick.label.size = default_if_null(
+      comp.parameters$axis.tick.label.size,
+      20
+    ),
+    legend.text.size = default_if_null(comp.parameters$legend.text.size, 20),
+    axis.title.size = default_if_null(comp.parameters$axis.title.size, 20)
+  )
+}
 
 
 # StandR subsetting, design, and contrast helpers

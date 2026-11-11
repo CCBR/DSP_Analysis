@@ -4,15 +4,17 @@ format:
   html:
     code-fold: true
     embed-resources: true
+execute:
+  warning: false
+  message: false
 params:
-  config.path: "test_datasets/Human_Kidney/parameters/human_kidney_test.yaml"
+  config.path: "test_datasets/Human_Kidney/input/parameters/human_kidney_test.yaml"
 ---
 
 # DE Analysis
 
 ```{r Setup}
-#| warning: true
-#| message: true
+#| results: hide
 
 library(GeomxTools)
 library(dplyr)
@@ -41,6 +43,11 @@ parameters <- yaml::read_yaml(params$config.path)
 de.comparisons <- lapply(parameters$de$comparisons, function(comparison) {
   modifyList(parameters$de$common, comparison)
 })
+names(de.comparisons) <- vapply(
+  de.comparisons,
+  function(comparison) comparison$contrast.name,
+  character(1)
+)
 
 # Check for output folders and create the folder if missing
 output.folders <- c(parameters$paths$de.folder, 
@@ -79,6 +86,8 @@ standr.ruv.object <- readRDS(file = paste0(parameters$paths$qc.folder,
 ## Run DE Comparisons
 
 ```{r Run DE Comparisons}
+#| results: hide
+#| fig-show: hide
 
 de.outputs <- run_all_de_comparisons(
   de.comparisons = de.comparisons,
@@ -86,6 +95,126 @@ de.outputs <- run_all_de_comparisons(
   parameters = parameters,
   standr.object = standr.ruv.object
 )
+```
+
+## Differential Expression Results
+
+```{r Display DE Results}
+#| echo: false
+#| results: asis
+
+# Emit HTML outputs with their required knitr dependencies.
+emit_knitr_output <- function(output) {
+  if (isTRUE(getOption("knitr.in.progress"))) {
+    rendered <- knitr::knit_print(
+      output,
+      options = knitr::opts_current$get()
+    )
+
+    knitr::knit_meta_add(attr(rendered, "knit_meta"))
+
+    cat("\n\n", rendered, "\n\n", sep = "")
+  } else {
+    print(output)
+  }
+
+  invisible(NULL)
+}
+
+
+
+for (comparison in names(de.outputs)) {
+  comparison.title <- str_to_title(gsub("_", " ", comparison))
+  comparison.parameters <- de.comparisons[[comparison]]
+  fc.limit <- default_if_null(comparison.parameters$fc.limit, 1.5)
+  padj.limit <- default_if_null(comparison.parameters$padj.limit, 0.05)
+
+  cat(
+    "\n### ",
+    comparison.title,
+    "\n\n::: {.panel-tabset}\n\n#### Volcano\n\n",
+    sep = ""
+  )
+  cat(
+    "Genes are classified using adjusted p-value < ",
+    padj.limit,
+    " and |log2FC| > ",
+    fc.limit,
+    ".\n\n",
+    sep = ""
+  )
+  for (de.method in comparison.parameters$de.method) {
+    method.output <- de.outputs[[comparison]][[de.method]]
+    if (is.null(method.output$results) || is.null(method.output$volcano)) {
+      next
+    }
+
+    cat("##### ", str_to_title(de.method), "\n\n", sep = "")
+    interactive.plot <- plotly::ggplotly(
+      make_de_volcano_interactive(
+        results.df = method.output$results,
+        comp.parameters = comparison.parameters
+      ),
+      tooltip = "text"
+    )
+    interactive.plot <- plotly::layout(
+      interactive.plot,
+      legend = list(
+        x = 1.02,
+        y = 1,
+        xanchor = "left",
+        yanchor = "top",
+        font = list(size = 9)
+      ),
+      margin = list(r = 120)
+    )
+    emit_knitr_output(interactive.plot)
+  }
+
+  cat("\n#### Differentially Expressed Genes\n\n")
+  for (de.method in comparison.parameters$de.method) {
+    method.results <- de.outputs[[comparison]][[de.method]]$results
+    if (is.null(method.results)) {
+      next
+    }
+
+    degs <- select_degs_for_report(
+      results.df = method.results,
+      fc.limit = fc.limit,
+      padj.limit = padj.limit
+    )
+    cat("##### ", str_to_title(de.method), "\n\n", sep = "")
+    if (nrow(degs) == 0) {
+      cat("No genes meet the configured adjusted p-value and logFC cutoffs.\n\n")
+    } else {
+      deg.table <- degs %>%
+        dplyr::select(gene, logfc, padj) %>%
+        gt::gt() %>%
+        gt::cols_label(
+          gene = "Gene",
+          logfc = "Log2 fold change",
+          padj = "Adjusted p-value"
+        ) %>%
+        gt::fmt_number(columns = logfc, decimals = 4) %>%
+        gt::fmt_scientific(columns = padj, decimals = 2) %>%
+        gt::opt_interactive(
+          use_pagination = TRUE,
+          use_pagination_info = TRUE,
+          use_sorting = TRUE,
+          use_search = TRUE,
+          use_compact_mode = TRUE,
+          use_page_size_select = TRUE,
+          page_size_default = 10,
+          page_size_values = c(10, 25, 50, 100),
+          height = 400
+        )
+
+      emit_knitr_output(deg.table)
+    }
+  }
+  cat("\n:::\n\n")
+}
+
 ```
 
 ## Venn Diagram to Compare Method DEGs
@@ -207,6 +336,7 @@ method_degs_venn <- function(de.results,
   
 }
 
+
 ```
 
 ### Create Venn Diagrams
@@ -264,6 +394,28 @@ if(parameters$de$common$write.deg.lists){
 }
   
 
+```
 
+## Method Comparison Venn Diagrams
+
+```{r Display Venn Diagrams}
+#| echo: false
+#| results: asis
+
+for (comparison in names(comparison.venn.list)) {
+  comparison.title <- str_to_title(gsub("_", " ", comparison))
+  diagrams <- comparison.venn.list[[comparison]]
+
+  cat(
+    "\n### ",
+    comparison.title,
+    "\n\n::: {.panel-tabset}\n\n#### Upregulated\n\n",
+    sep = ""
+  )
+  print(diagrams$up.venn)
+  cat("\n\n#### Downregulated\n\n")
+  print(diagrams$down.venn)
+  cat("\n:::\n\n")
+}
 
 ```
