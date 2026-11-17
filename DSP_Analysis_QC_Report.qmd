@@ -267,9 +267,14 @@ standr.input.list$annotation$SegmentDisplayName <- standr.input.list$annotation$
 
 
 # Add required columns for StandR if missing
-if(!("ROICoordinateX" %in% colnames(standr.input.list$annotation))){
+if(!("ROI Coordinate X" %in% colnames(standr.input.list$annotation))){
   
   standr.input.list$annotation$ROICoordinateX <- 1
+  
+}
+
+if(!("ROI Coordinate Y" %in% colnames(standr.input.list$annotation))){
+  
   standr.input.list$annotation$ROICoordinateY <- 1
   
 }
