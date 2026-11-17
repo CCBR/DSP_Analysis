@@ -1353,8 +1353,8 @@ default.spe <- make_spe_for_standr(
 spe.list <- list(spatial.object.standr.aoi.QC, spatial.object.standr.final, default.spe)
 
 PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
-                                       bio_feature_name = "region",
-                                       batch_feature_name = "slide_name",
+                                       bio_feature_name = parameters$PCA$PCA.Eval.Fields$bio.field,
+                                       batch_feature_name = parameters$PCA$PCA.Eval.Fields$batch.field,
                                        data_names = c("Raw","RUV","Default"))
 
 print(PCA.eval.plots)
