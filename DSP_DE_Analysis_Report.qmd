@@ -1,5 +1,5 @@
 ---
-title: "DSP DE Analysis - Kidney Test Dataset"
+title: "DSP Differential Expression - `r yaml::read_yaml(params$config.path)$paths$dataset.name`"
 format:
   html:
     code-fold: true
