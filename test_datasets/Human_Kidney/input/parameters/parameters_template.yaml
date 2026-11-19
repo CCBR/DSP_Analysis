@@ -3,9 +3,6 @@
 # ---------------------------------------------------------------------------
 
 # "DSP Analysis QC Report Template"
-
-config.loaded: true
-
 run:
     # Run standr with a range of k values to evaluate the best k for normalization
     k.eval: true
@@ -115,6 +112,9 @@ MA:
     contrast.levels: ["glomerulus", "tubule"]
 
 PCA: 
+    PCA.Eval.Fields:
+        bio.field: combined_column
+        batch.field: slide_name
     plots:
         dataset.field: "pathology"
     subset:
@@ -238,10 +238,26 @@ de:
       regions: ["PanCK_pos", "PanCK_neg"]
       group.col: "region"
       groups: ["tubule"]
-      # Optional custom model for the default DE method. Set both fields to
-      # use a one-sided formula and the fixed-effect variable to compare.
+      # Optional custom mixed model for the default DE method. Existing custom
+      # formulas default to model.type: mixed.
       # model.formula: "treatment * area + (1 | mouse_id)"
       # group.var: "treatment"
+      #
+      # To explicitly choose a model with no random effects instead:
+      # model.type: "fixed"
+      # model.formula: "~ class + age"
+      # group.var: "class"
+      # contrast.numerator: "tk"
+      # contrast.denominator: "wt"
+      # The logFC is numerator minus denominator on log2-normalized counts.
+      # For interactions, the contrast is averaged over the usable samples'
+      # covariate distribution; p-values are unmoderated and FDR-adjusted.
+      # Use a fixed model only when ignoring within-group dependence is
+      # appropriate (e.g. one AOI per mouse for a region-specific comparison).
+      # Without a custom formula, Within Groups comparisons must have multiple
+      # slides in every group; the implicit single-slide fallback is disabled.
+      # Changing to/from a fixed model requires overwrite.results: true when
+      # existing default results are cached.
       legend.title: "Expression in PanCK+"
 
       # StandR parameters unique to this comparison (merged with common.standr)

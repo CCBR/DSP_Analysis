@@ -1475,6 +1475,12 @@ describe_standr_model <- function(design, contrast, block.field = NULL) {
 
 print_de_model <- function(method.output, de.method) {
   model <- method.output$model
+  label <- if (identical(de.method, "default") &&
+               identical(method.output$model.spec$model.type, "fixed")) {
+    "Default DE (fixed-effects)"
+  } else {
+    de_method_label(de.method)
+  }
 
   if (is.character(model) &&
       length(model) == 1L &&
@@ -1482,7 +1488,7 @@ print_de_model <- function(method.output, de.method) {
       nzchar(trimws(model))) {
     cat(
       "Model used (",
-      de_method_label(de.method),
+      label,
       "): ",
       model,
       "\n\n",
@@ -1491,7 +1497,7 @@ print_de_model <- function(method.output, de.method) {
   } else {
     cat(
       "Model unavailable (",
-      de_method_label(de.method),
+      label,
       "): This cached result predates model metadata. Set ",
       "overwrite.results = TRUE to rerun this method and record its model.\n\n",
       sep = ""
@@ -2115,6 +2121,362 @@ make_standr_gsea_log_counts <- function(v,
 # DE method runners
 
 
+de_model_metadata <- function(object) {
+  GeomxTools::sData(object)
+}
+
+validate_default_slide_model <- function(object, comp.parameters, comparison) {
+  metadata <- de_model_metadata(object)
+  fields <- c("slide_name", comp.parameters$group.col, comp.parameters$region.col)
+  if (length(fields) != 3L || any(!fields %in% names(metadata))) {
+    stop("Default DE comparison '", comparison,
+         "' requires valid slide_name, group.col and region.col metadata.",
+         call. = FALSE)
+  }
+
+  metadata$main.group <- factor(
+    metadata[[comp.parameters$group.col]], levels = comp.parameters$groups
+  )
+  metadata$sub.group <- factor(
+    metadata[[comp.parameters$region.col]], levels = comp.parameters$regions
+  )
+  metadata$slide <- factor(metadata$slide_name)
+  within <- identical(
+    default_if_null(comp.parameters$analysis.type, "Within Groups"),
+    "Within Groups"
+  )
+  subsets <- if (within) comp.parameters$groups else comp.parameters$regions
+
+  for (subset in subsets) {
+    selected <- if (within) {
+      !is.na(metadata$main.group) & metadata$main.group == subset &
+        !is.na(metadata$sub.group)
+    } else {
+      !is.na(metadata$sub.group) & metadata$sub.group == subset &
+        !is.na(metadata$main.group)
+    }
+    subset.metadata <- metadata[selected, , drop = FALSE]
+    comparison.group <- if (within) subset.metadata$sub.group else {
+      subset.metadata$main.group
+    }
+    if (length(unique(comparison.group)) < 2L) {
+      next
+    }
+    slides <- unique(subset.metadata$slide)
+    if (within && length(slides) <= 1L) {
+      stop(
+        "Default DE comparison '", comparison, "', group '", subset,
+        "' has only one slide; the automatic fixed-effects fallback is disabled. ",
+        "Choose model.type: fixed and specify the model and contrast in the ",
+        "parameters file if a model without random effects is appropriate.",
+        call. = FALSE
+      )
+    }
+    formula <- if (within) {
+      ~sub.group + (1 + sub.group | slide)
+    } else {
+      ~main.group + (1 | slide)
+    }
+    validate_random_effects_metadata(
+      subset.metadata, formula, paste0(comparison, "' subset '", subset)
+    )
+  }
+}
+
+validate_random_effects <- function(object, model.formula, comparison) {
+  validate_random_effects_metadata(
+    de_model_metadata(object), model.formula, comparison
+  )
+}
+
+validate_random_effects_metadata <- function(metadata, model.formula, comparison) {
+  bars <- reformulas::findbars(model.formula)
+  if (length(bars) == 0L) {
+    stop(
+      "Default DE comparison '", comparison,
+      "' has no random-effect term in its mixed model. Choose model.type: fixed ",
+      "in the parameters file for an explicitly fixed-effects model.",
+      call. = FALSE
+    )
+  }
+
+  variables <- all.vars(model.formula)
+  missing <- setdiff(variables, names(metadata))
+  if (length(missing) > 0L) {
+    stop("Default DE comparison '", comparison, "' is missing model metadata: ",
+         paste(missing, collapse = ", "), call. = FALSE)
+  }
+
+  fixed.frame <- stats::model.frame(
+    reformulas::nobars(model.formula), data = metadata, na.action = stats::na.pass
+  )
+  usable <- stats::complete.cases(metadata[, variables, drop = FALSE]) &
+    stats::complete.cases(fixed.frame)
+  metadata <- metadata[usable, , drop = FALSE]
+  if (nrow(metadata) == 0L) {
+    stop("Default DE comparison '", comparison,
+         "' has no complete observations for the model; check the parameters file.",
+         call. = FALSE)
+  }
+
+  random <- reformulas::mkReTrms(bars, metadata)
+  for (name in names(random$flist)) {
+    n.levels <- nlevels(random$flist[[name]])
+    if (n.levels < 2L || n.levels >= nrow(metadata)) {
+      stop(
+        "Default DE comparison '", comparison, "' cannot estimate random effect '",
+        name, "': ", n.levels, " grouping levels for ", nrow(metadata),
+        " usable observations. Review the model in the parameters file; ",
+        "choose model.type: fixed only if removing the random effect is appropriate.",
+        call. = FALSE
+      )
+    }
+  }
+  for (i in seq_along(random$Ztlist)) {
+    if (nrow(random$Ztlist[[i]]) >= nrow(metadata)) {
+      stop(
+        "Default DE comparison '", comparison, "' cannot estimate random term '",
+        names(random$Ztlist)[i], "': it has at least as many random-effect ",
+        "coefficients as usable observations. Review the model in the parameters file.",
+        call. = FALSE
+      )
+    }
+  }
+  invisible(NULL)
+}
+
+fixed_de_model_spec <- function(comp.parameters) {
+  list(
+    model.type = comp.parameters$model.type,
+    model.formula = comp.parameters$model.formula,
+    group.var = comp.parameters$group.var,
+    contrast.numerator = comp.parameters$contrast.numerator,
+    contrast.denominator = comp.parameters$contrast.denominator
+  )
+}
+
+validate_de_model_type <- function(comp.parameters, comparison) {
+  model.type <- default_if_null(comp.parameters$model.type, "mixed")
+  if (!is.character(model.type) || length(model.type) != 1L ||
+      is.na(model.type) || !model.type %in% c("fixed", "mixed")) {
+    stop("model.type must be either 'fixed' or 'mixed'.", call. = FALSE)
+  }
+  if (!is.null(comp.parameters$model.type) &&
+      is.null(comp.parameters$model.formula)) {
+    stop("Default DE comparison '", comparison,
+         "' requires model.formula when model.type is specified.",
+         call. = FALSE)
+  }
+  model.type
+}
+
+validate_cached_default_model <- function(method.output, comp.parameters,
+                                          object, comparison) {
+  validate_de_model_type(comp.parameters, comparison)
+  cached.spec <- method.output$model.spec
+  selected.fixed <- identical(comp.parameters$model.type, "fixed")
+  cached.model <- method.output$model
+  cached.fixed <- !is.null(cached.spec) ||
+    (is.character(cached.model) && length(cached.model) == 1L &&
+       !is.na(cached.model) &&
+       grepl("linear model (no random effect)", tolower(cached.model),
+             fixed = TRUE))
+  if ((selected.fixed &&
+       !identical(cached.spec, fixed_de_model_spec(comp.parameters))) ||
+      (!selected.fixed && cached.fixed)) {
+    stop(
+      "Default DE comparison '", comparison,
+      "' has cached results from a different or unverified model. ",
+      "Set overwrite.results: true in the parameters file to fit the selected model.",
+      call. = FALSE
+    )
+  }
+  if (!selected.fixed && is.null(comp.parameters$model.formula) &&
+      is.null(cached.model)) {
+    validate_default_slide_model(object, comp.parameters, comparison)
+  }
+  invisible(NULL)
+}
+
+run_fixed_de <- function(object, comp.parameters, model.formula, comparison) {
+  if (length(reformulas::findbars(model.formula)) > 0L) {
+    stop("Default DE comparison '", comparison,
+         "' specifies random effects with model.type: fixed.", call. = FALSE)
+  }
+  if (length(attr(stats::terms(model.formula), "offset")) > 0L) {
+    stop("Default DE comparison '", comparison,
+         "' cannot use an offset in a fixed-effects model.", call. = FALSE)
+  }
+
+  group <- comp.parameters$group.var
+  numerator <- comp.parameters$contrast.numerator
+  denominator <- comp.parameters$contrast.denominator
+  valid.level <- function(x) {
+    is.character(x) && length(x) == 1L && !is.na(x) && nzchar(trimws(x))
+  }
+  if (!valid.level(numerator) || !valid.level(denominator) ||
+      identical(numerator, denominator)) {
+    stop("Default DE comparison '", comparison,
+         "' requires distinct contrast.numerator and contrast.denominator ",
+         "values in the parameters file.", call. = FALSE)
+  }
+
+  metadata <- de_model_metadata(object)
+  variables <- all.vars(model.formula)
+  missing <- setdiff(variables, names(metadata))
+  if (length(missing) > 0L || !group %in% variables) {
+    stop("Default DE comparison '", comparison,
+         "' needs group.var and all formula variables in the model metadata.",
+         call. = FALSE)
+  }
+  metadata[[group]] <- factor(metadata[[group]])
+  frame <- stats::model.frame(model.formula, metadata, na.action = stats::na.pass)
+  usable <- stats::complete.cases(frame)
+  metadata <- droplevels(metadata[usable, , drop = FALSE])
+  if (!all(c(numerator, denominator) %in% levels(metadata[[group]]))) {
+    stop("Default DE comparison '", comparison,
+         "' requires both contrast levels in the usable observations.",
+         call. = FALSE)
+  }
+  model.frame <- stats::model.frame(model.formula, metadata, na.action = stats::na.fail)
+  model.terms <- stats::terms(model.frame)
+  design <- stats::model.matrix(model.terms, model.frame)
+  if (any(!is.finite(design)) || qr(design)$rank < ncol(design)) {
+    stop("Default DE comparison '", comparison,
+         "' has a non-finite or rank-deficient fixed-effects design.",
+         call. = FALSE)
+  }
+  high <- low <- metadata
+  high[[group]] <- factor(numerator, levels = levels(metadata[[group]]))
+  low[[group]] <- factor(denominator, levels = levels(metadata[[group]]))
+  high.design <- stats::model.matrix(
+    model.terms, high, contrasts.arg = attr(design, "contrasts")
+  )
+  low.design <- stats::model.matrix(
+    model.terms, low, contrasts.arg = attr(design, "contrasts")
+  )
+  if (any(!is.finite(high.design)) || any(!is.finite(low.design))) {
+    stop("Default DE comparison '", comparison,
+         "' has non-finite values in the fixed-model contrast design.",
+         call. = FALSE)
+  }
+  contrast <- colMeans(high.design - low.design)
+  if (!any(abs(contrast) > .Machine$double.eps)) {
+    stop("Default DE comparison '", comparison,
+         "' has no estimable contrast for group.var '", group, "'.",
+         call. = FALSE)
+  }
+  contrast.matrix <- matrix(
+    contrast, ncol = 1L, dimnames = list(colnames(design), "contrast")
+  )
+  expression <- Biobase::assayDataElement(object, "log_q")[, usable, drop = FALSE]
+  if (any(!is.finite(expression))) {
+    stop("Default DE comparison '", comparison,
+         "' has non-finite expression values in the usable observations.",
+         call. = FALSE)
+  }
+  fit <- limma::contrasts.fit(limma::lmFit(expression, design), contrast.matrix)
+  estimate <- fit$coefficients[, 1L]
+  standard.error <- fit$stdev.unscaled[, 1L] * fit$sigma
+  pval <- 2 * stats::pt(abs(estimate / standard.error),
+                        df = fit$df.residual, lower.tail = FALSE)
+  if (any(!is.finite(pval))) {
+    stop("Default DE comparison '", comparison,
+         "' could not calculate valid fixed-model p-values for: ",
+         paste(rownames(expression)[!is.finite(pval)], collapse = ", "),
+         call. = FALSE)
+  }
+  results <- data.frame(
+    gene = rownames(expression), logfc = unname(estimate),
+    pval = unname(pval), padj = unname(stats::p.adjust(pval, method = "fdr"))
+  )
+  list(
+    results = results,
+    results.raw = fit,
+    model = paste0(
+      "Custom linear model (no random effect): ",
+      paste(deparse(model.formula), collapse = ""),
+      "; pairwise contrast by ", group, ": ", numerator, " - ", denominator
+    ),
+    model.spec = fixed_de_model_spec(comp.parameters)
+  )
+}
+
+
+random_effect_error_guidance <- function(error) {
+  if (grepl(
+    "number of levels of each grouping factor|grouping factors must have > 1 sampled level|number of observations .*number of random effects",
+    error
+  )) {
+    return(paste0(
+      "\nReview the random-effect model in the parameters file; choose ",
+      "model.type: fixed only if removing the random effect is appropriate."
+    ))
+  }
+  ""
+}
+
+run_default_de_fit <- function(parallel.fit, serial.fit, comparison) {
+  worker.warning <- NULL
+  result <- tryCatch(
+    withCallingHandlers(
+      parallel.fit(),
+      warning = function(w) {
+        text <- conditionMessage(w)
+        if (grepl("scheduled cores?.*(encountered error|did not deliver results)",
+                  text)) {
+          worker.warning <<- text
+        }
+      }
+    ),
+    error = identity
+  )
+
+  if (!inherits(result, "error") && is.null(worker.warning)) {
+    return(result)
+  }
+
+  original.error <- if (inherits(result, "error")) {
+    conditionMessage(result)
+  } else {
+    worker.warning
+  }
+  masked.error <- !is.null(worker.warning) ||
+    identical(original.error, "subscript out of bounds")
+
+  if (masked.error) {
+    message(
+      "Diagnosing default DE comparison '", comparison,
+      "' on one core; this may take time for large datasets."
+    )
+    diagnostic.error <- tryCatch(
+      {
+        invisible(capture.output(serial.fit()))
+        NULL
+      },
+      error = identity
+    )
+    diagnostic <- if (inherits(diagnostic.error, "error")) {
+      paste0("Single-core diagnostic error: ", conditionMessage(diagnostic.error))
+    } else {
+      "Single-core diagnostic completed without reproducing the error."
+    }
+    stop(
+      "Default DE comparison '", comparison, "' failed. ",
+      diagnostic, "\nOriginal error: ", original.error,
+      if (!is.null(worker.warning) && !identical(worker.warning, original.error)) {
+        paste0("\nParallel worker warning: ", worker.warning)
+      },
+      random_effect_error_guidance(paste(diagnostic, original.error)),
+      call. = FALSE
+    )
+  }
+
+  stop("Default DE comparison '", comparison, "' failed: ", original.error,
+       random_effect_error_guidance(original.error), call. = FALSE)
+}
+
+
 # Run the default DSPWorkflow method, optionally using a custom model formula.
 run_default_de <- function(lmm.input, comp.parameters) {
   analysis.type <- default_if_null(
@@ -2122,18 +2484,37 @@ run_default_de <- function(lmm.input, comp.parameters) {
     "Within Groups"
   )
 
+  comparison <- default_if_null(comp.parameters$contrast.name, "<unnamed>")
+  model.type <- validate_de_model_type(comp.parameters, comparison)
+
   if (is.null(comp.parameters$model.formula)) {
-    execution.output <- capture.output(
-      results.list <- diffExpr(
+    validate_default_slide_model(lmm.input$subset.object, comp.parameters, comparison)
+    fit <- function(n.cores, multi.core) {
+      diffExpr(
         object = lmm.input$subset.object,
         analysis.type = analysis.type,
         region.col = comp.parameters$region.col,
         regions = comp.parameters$regions,
         group.col = comp.parameters$group.col,
         groups = comp.parameters$groups,
-        n.cores = parallel::detectCores()
+        n.cores = n.cores,
+        multi.core = multi.core
+      )
+    }
+    execution.output <- capture.output(
+      results.list <- run_default_de_fit(
+        parallel.fit = function() fit(parallel::detectCores(), TRUE),
+        serial.fit = function() fit(1L, FALSE),
+        comparison = comparison
       )
     )
+
+    if (any(grepl("Running DE with linear model (no mixed-effect)",
+                  execution.output, fixed = TRUE))) {
+      stop("Default DE comparison '", comparison,
+           "' attempted an implicit fixed-effects model. Choose model.type: fixed ",
+           "in the parameters file if this model is appropriate.", call. = FALSE)
+    }
 
     if (length(execution.output) > 0) {
       cat(execution.output, sep = "\n")
@@ -2172,16 +2553,30 @@ run_default_de <- function(lmm.input, comp.parameters) {
       stop("model.formula must be a one-sided formula.")
     }
 
-    execution.output <- capture.output(
-      results.list <- mixedModelDE(
+    if (identical(model.type, "fixed")) {
+      return(run_fixed_de(
+        lmm.input$subset.object, comp.parameters, model.formula, comparison
+      ))
+    }
+    validate_random_effects(lmm.input$subset.object, model.formula, comparison)
+
+    fit <- function(n.cores, multi.core) {
+      mixedModelDE(
         object = lmm.input$subset.object,
         elt = "log_q",
         modelFormula = model.formula,
         groupVar = comp.parameters$group.var,
-        nCores = parallel::detectCores(),
-        multiCore = TRUE,
+        nCores = n.cores,
+        multiCore = multi.core,
         pAdjust = "fdr",
         pairwise = TRUE
+      )
+    }
+    execution.output <- capture.output(
+      results.list <- run_default_de_fit(
+        parallel.fit = function() fit(parallel::detectCores(), TRUE),
+        serial.fit = function() fit(1L, FALSE),
+        comparison = comparison
       )
     )
 
@@ -2505,6 +2900,51 @@ run_standr_de <- function(standr.object, comp.parameters) {
 # Main comparison runner
 
 
+backup_de_results <- function(result.file,
+                              result.RDS,
+                              backup.folder,
+                              backup.prefix) {
+  source.files <- c(csv = result.file, rds = result.RDS)
+  missing.files <- !file.exists(source.files)
+  if (any(missing.files)) {
+    stop(
+      "Cannot back up DE results; source file(s) do not exist: ",
+      paste(source.files[missing.files], collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!dir.exists(backup.folder) &&
+      !dir.create(backup.folder, recursive = TRUE, showWarnings = FALSE)) {
+    stop("Unable to create DE results backup folder: ", backup.folder,
+         call. = FALSE)
+  }
+
+  backup.files <- file.path(
+    backup.folder,
+    paste0(backup.prefix, c("_results_backup.csv", "_results_backup.RDS"))
+  )
+  names(backup.files) <- names(source.files)
+
+  for (format in names(source.files)) {
+    if (!isTRUE(file.copy(source.files[[format]], backup.files[[format]]))) {
+      stop(
+        "Failed to back up DE ",
+        toupper(format),
+        " results from '",
+        source.files[[format]],
+        "' to '",
+        backup.files[[format]],
+        "'.",
+        call. = FALSE
+      )
+    }
+  }
+
+  backup.files
+}
+
+
 run_de_comparison <- function(comp.parameters,
                               normalized.object,
                               parameters,
@@ -2594,21 +3034,18 @@ run_de_comparison <- function(comp.parameters,
     } else if(comp.parameters$overwrite.results) {
       
       # Save a backup of previous results
-      file.copy(result.file, 
-                paste0(parameters$paths$de.folder, 
-                       "backup_results/", 
-                       comp.parameters$contrast.name, 
-                       "_", de.method, 
-                       format(Sys.time(), "%Y%m%d_%H%M"), 
-                       "results_backup.csv"))
-      
-      file.copy(result.file, 
-                paste0(parameters$paths$de.folder, 
-                       "backup_results/", 
-                       comp.parameters$contrast.name, 
-                       "_", de.method, 
-                       format(Sys.time(), "%Y%m%d_%H%M"), 
-                       "results_backup.RDS"))
+      backup_de_results(
+        result.file = result.file,
+        result.RDS = result.RDS,
+        backup.folder = file.path(parameters$paths$de.folder, "backup_results"),
+        backup.prefix = paste0(
+          comp.parameters$contrast.name,
+          "_",
+          de.method,
+          "_",
+          format(Sys.time(), "%Y%m%d_%H%M%S")
+        )
+      )
       
       cat("Saved previous results as a backup.")
       
@@ -2621,6 +3058,12 @@ run_de_comparison <- function(comp.parameters,
     if (!run.de) {
       
       method.output <- readRDS(result.RDS)
+      if (de.method == "default") {
+        validate_cached_default_model(
+          method.output, comp.parameters, lmm.input$subset.object,
+          default_if_null(comp.parameters$contrast.name, "<unnamed>")
+        )
+      }
       
       results.df <- method.output$results
       

@@ -5,7 +5,7 @@ format:
     code-fold: true
     embed-resources: true
 params:
-  config.path: "test_datasets/Human_Kidney/parameters/human_kidney_test.yaml"
+  config.path: "test_datasets/Human_Kidney/input/parameters/human_kidney_test.yaml"
 ---
 
 ## Load Libraries
@@ -1359,13 +1359,8 @@ PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
                                        batch_feature_name = parameters$PCA$PCA.Eval.Fields$batch.field,
                                        data_names = c("Raw","RUV","Default"))
   
-  PCA.eval.plot.list[[bio.field]] <- PCA.eval.plots
-  
-}
 
-
-
-print(PCA.eval.plot.list)
+print(PCA.eval.plots)
 ```
 
 #### PCA by Segment
