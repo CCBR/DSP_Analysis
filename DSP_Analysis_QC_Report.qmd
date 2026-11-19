@@ -155,6 +155,8 @@ if(parameters$initialization$export){
 ### Each value in a field to be used in the DE comparisons should have unique combinations with values from all other fields used in comparisons
 ### Example: Avoid when Field 1 value A is always Field 2 value B. Combine Field 1 and 2 in this instance into a new field in this instance
 
+# TO DO: Add conversion off all columns to string, cannot combine numeric and string with current sankey method
+
 init.annotation.df <- pData(init.object)
 
 # Establish the order of values in each lane
@@ -339,7 +341,7 @@ if(parameters$qc$export.standr){
 
 ### Load and Create the Spatial Object
 
-```{r}
+```{r Load and Create the Spatial Object}
 
 count.file <- paste0(parameters$paths$qc.folder, 
                           "StandR/input_files/standr_input_counts.tsv")
@@ -358,7 +360,7 @@ spatial.object.standr <- readGeoMx(count.file,
 
 #### Filter Out Genes
 
-```{r}
+```{r Filter Out Genes}
 
 # Sample fraction is the fraction of all AOIs a gene is found below the min count
 # Counts are converted to logCPM before sample fraction evaluation
@@ -392,7 +394,7 @@ gene.qc.plot <- plotGeneQC(spatial.object.standr.gene.QC,
 
 #### Filter Out ROIs
 
-```{r}
+```{r Filter Out ROIs}
 
 # Check the library size cutoff versus the overall AOI distribution
 lib.size.cutoff = parameters$standr.standr.filtering$aoi.filter$lib.size
@@ -431,7 +433,7 @@ cat("AOIs removed", "\n", aois.removed.from.qc)
 
 #### Apply Normalization and Batch Correction
 
-```{r}
+```{r Apply Normalization and Batch Correction}
 # Apply Normalization for Evaluation
 spatial.object.standr.normalized <- geomxNorm(spatial.object.standr.aoi.QC, method = "TMM")
 
@@ -484,7 +486,7 @@ experimental.fields <- parameters$standr.normalization$bio.fields
 spatial.object.standr.final <- geomxBatchCorrection(spatial.object.standr.ruv, 
                                 factors = experimental.fields, 
                                 NCGs = metadata(spatial.object.standr.ruv)$NCGs, 
-                                k = 2)
+                                k = parameters$standr.normalization$best.k)
 
 # Extract the counts
 standr.counts.list <- list()
@@ -500,7 +502,7 @@ standr.aoi.annotation <- as.data.frame(colData(spatial.object.standr.final))
 
 ### RUV K Comparison
 
-```{r}
+```{r RUV K Comparison}
 #| eval: !expr parameters$run$k.eval
 
 pca.plot.list <- list()
@@ -780,7 +782,7 @@ aoi.detection.summary <- pData(loq.detection.output$object) %>%
 #| message: false
 
 # Filter the data using the cutoff for gene detection rate
-aoi.gene.rate.cutoff <- parameters$default.filtering$gene.detection.cutoff
+aoi.gene.rate.cutoff <- parameters$default.filtering$aoi.detection.cutoff
 
 object <- loq.detection.output$object
 
@@ -888,7 +890,7 @@ gene.detection.summary <- fData(loq.detection.output.aoi.filtered$object) %>%
 #| message: false
 
 # Set the cutoff for gene detection (percentage)
-gene.detection.cutoff <- parameters$default.filtering$aoi.detection.cutoff
+gene.detection.cutoff <- parameters$default.filtering$gene.detection.cutoff
 
 # Manually include the negative control probe, for downstream use
 negative.probe.fData <- subset(fData(loq.detection.output.aoi.filtered$object), CodeClass == "Negative")
@@ -1356,8 +1358,14 @@ PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
                                        bio_feature_name = parameters$PCA$PCA.Eval.Fields$bio.field,
                                        batch_feature_name = parameters$PCA$PCA.Eval.Fields$batch.field,
                                        data_names = c("Raw","RUV","Default"))
+  
+  PCA.eval.plot.list[[bio.field]] <- PCA.eval.plots
+  
+}
 
-print(PCA.eval.plots)
+
+
+print(PCA.eval.plot.list)
 ```
 
 #### PCA by Segment
