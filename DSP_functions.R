@@ -808,6 +808,7 @@ improved_make_volcano <- function(lmm.results,
                          title.size = 16,
                          legend.title, 
                          fc.limit = 1, 
+                         padj.limit = 0.05,
                          custom.gene.labels = NULL, 
                          remove.controls = FALSE, 
                          remove.genes = NULL, 
@@ -852,9 +853,9 @@ improved_make_volcano <- function(lmm.results,
   
   # Create a column for direction of DEGs
   lmm.results$de_direction <- "NONE"
-  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+  lmm.results$de_direction[lmm.results$padj < padj.limit &
                              lmm.results$logfc > fc.limit] <- "UP"
-  lmm.results$de_direction[lmm.results$padj < 0.05 & 
+  lmm.results$de_direction[lmm.results$padj < padj.limit &
                              lmm.results$logfc < -fc.limit] <- "DOWN"
   
   # Count DEGs for legend labels
@@ -909,7 +910,7 @@ improved_make_volcano <- function(lmm.results,
                                                     col = de_direction, 
                                                     label = deglabel)) +
         geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
-        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        geom_hline(yintercept = -log10(padj.limit), col = dotted.line.color, linetype = 'dashed') +
         labs(x = x.lab,
              y = y.lab, 
              title = title) + 
@@ -955,7 +956,7 @@ improved_make_volcano <- function(lmm.results,
                                                     col = de_direction, 
                                                     label = deglabel)) +
         geom_vline(xintercept = c(-fc.limit, fc.limit), col = dotted.line.color, linetype = 'dashed') +
-        geom_hline(yintercept = -log10(0.05), col = dotted.line.color, linetype = 'dashed') + 
+        geom_hline(yintercept = -log10(padj.limit), col = dotted.line.color, linetype = 'dashed') +
         labs(x = x.lab,
              y = y.lab, 
              title = title) + 
@@ -1041,7 +1042,7 @@ improved_make_volcano <- function(lmm.results,
                                                 col = custom.label, 
                                                 alpha = 1)) +
       geom_vline(xintercept = c(-fc.limit, fc.limit), col = "gray", linetype = 'dashed') +
-      geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') + 
+      geom_hline(yintercept = -log10(padj.limit), col = "gray", linetype = 'dashed') +
       labs(x = "log2 Fold Change",
            y = "-log10 adjusted p-value", 
            title = title) + 
@@ -1088,6 +1089,116 @@ improved_make_volcano <- function(lmm.results,
   return(volcano.plot)
   
 } 
+
+improved_make_volcano_interactive <- function(lmm.results,
+                                              title,
+                                              title.size = 16,
+                                              legend.title,
+                                              fc.limit = 1,
+                                              padj.limit = 0.05,
+                                              remove.genes = NULL,
+                                              x.lab = "Log2 Fold Change",
+                                              y.lab = "-Log10 adjusted p-value",
+                                              dotted.line.color = "gray",
+                                              alpha = 1,
+                                              nonDE.color = "gray",
+                                              upDE.color = "violetred4",
+                                              downDE.color = "steelblue4",
+                                              axis.tick.label.size = 8,
+                                              legend.text.size = 8,
+                                              axis.title.size = 8) {
+  if (!is.null(remove.genes)) {
+    lmm.results <- lmm.results[
+      !rownames(lmm.results) %in% remove.genes,
+      ,
+      drop = FALSE
+    ]
+  }
+
+  lmm.results$de_direction <- "NONE"
+  lmm.results$de_direction[
+    lmm.results$padj < padj.limit & lmm.results$logfc > fc.limit
+  ] <- "UP"
+  lmm.results$de_direction[
+    lmm.results$padj < padj.limit & lmm.results$logfc < -fc.limit
+  ] <- "DOWN"
+
+  n_up <- sum(lmm.results$de_direction == "UP", na.rm = TRUE)
+  n_down <- sum(lmm.results$de_direction == "DOWN", na.rm = TRUE)
+  direction.labels <- c(
+    "UP" = paste0("UP (n = ", n_up, ")"),
+    "NONE" = "NONE",
+    "DOWN" = paste0("DOWN (n = ", n_down, ")")
+  )
+  direction.colors <- c(
+    "DOWN" = downDE.color,
+    "NONE" = nonDE.color,
+    "UP" = upDE.color
+  )
+  log2.scale <- ceiling(max(abs(lmm.results$logfc)))
+
+  ggplot2::ggplot(
+    lmm.results,
+    ggplot2::aes(
+      x = logfc,
+      y = -log10(padj),
+      color = de_direction,
+      text = gene
+    )
+  ) +
+    ggplot2::geom_vline(
+      xintercept = c(-fc.limit, fc.limit),
+      color = dotted.line.color,
+      linetype = "dashed"
+    ) +
+    ggplot2::geom_hline(
+      yintercept = -log10(padj.limit),
+      color = dotted.line.color,
+      linetype = "dashed"
+    ) +
+    ggplot2::geom_point(size = 2, alpha = alpha) +
+    ggplot2::scale_color_manual(
+      legend.title,
+      values = direction.colors,
+      breaks = c("UP", "NONE", "DOWN"),
+      labels = direction.labels[c("UP", "NONE", "DOWN")]
+    ) +
+    ggplot2::scale_x_continuous(
+      breaks = scales::breaks_pretty(n = 7),
+      limits = c(-log2.scale, log2.scale)
+    ) +
+    ggplot2::labs(
+      x = x.lab,
+      y = y.lab,
+      title = title
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      panel.grid.major = ggplot2::element_line(
+        color = "grey90",
+        linewidth = 0.5
+      ),
+      plot.title = ggplot2::element_text(
+        hjust = 0.5,
+        face = "bold",
+        size = title.size
+      ),
+      axis.title = ggplot2::element_text(
+        face = "bold",
+        size = axis.title.size
+      ),
+      axis.text = ggplot2::element_text(size = axis.tick.label.size),
+      legend.position = "right",
+      legend.text = ggplot2::element_text(
+        face = "bold",
+        size = legend.text.size
+      ),
+      legend.title = ggplot2::element_text(
+        face = "bold",
+        size = legend.text.size
+      )
+    )
+}
 
 make_dual_volcano <- function(lmm.results.1, 
                               lmm.results.2,
@@ -1268,6 +1379,126 @@ de_method_label <- function(de.method) {
   }
 }
 
+describe_default_de_model <- function(analysis.type, execution.output) {
+  mixed.effect <- any(grepl(
+    "Running DE with linear mixed-effect model",
+    execution.output,
+    fixed = TRUE
+  ))
+  linear <- any(grepl(
+    "Running DE with linear model (no mixed-effect)",
+    execution.output,
+    fixed = TRUE
+  ))
+
+  descriptions <- character()
+
+  if (mixed.effect) {
+    if (identical(analysis.type, "Within Groups")) {
+      descriptions <- c(
+        descriptions,
+        "Linear mixed-effects model: ~ sub.group + (1 + sub.group | slide)"
+      )
+    } else {
+      descriptions <- c(
+        descriptions,
+        "Linear mixed-effects model: ~ main.group + (1 | slide)"
+      )
+    }
+  }
+
+  if (linear) {
+    if (!identical(analysis.type, "Within Groups")) {
+      stop(
+        "DSPWorkflow reported a non-mixed model for an unsupported analysis type: ",
+        analysis.type
+      )
+    }
+
+    descriptions <- c(
+      descriptions,
+      "Linear model (no random effect): ~ sub.group"
+    )
+  }
+
+  if (length(descriptions) == 0) {
+    stop(
+      "Could not determine the model used by DSPWorkflow::diffExpr(). ",
+      "Its execution output did not identify a statistical model."
+    )
+  }
+
+  paste(unique(descriptions), collapse = "; ")
+}
+
+describe_standr_model <- function(design, contrast, block.field = NULL) {
+  if (!is.matrix(design) || is.null(colnames(design))) {
+    stop("StandR design must be a matrix with named model columns.")
+  }
+
+  if (!is.matrix(contrast) ||
+      is.null(rownames(contrast)) ||
+      is.null(colnames(contrast)) ||
+      !all(rownames(contrast) %in% colnames(design))) {
+    stop("StandR contrast must be a named matrix matching the design columns.")
+  }
+
+  contrast.descriptions <- vapply(seq_len(ncol(contrast)), function(i) {
+    coefficients <- contrast[, i]
+    included <- coefficients != 0
+
+    paste0(
+      colnames(contrast)[i],
+      ": ",
+      paste(
+        paste0(rownames(contrast)[included], "=", coefficients[included]),
+        collapse = ", "
+      )
+    )
+  }, character(1))
+
+  block.description <- if (is.null(block.field)) {
+    "no blocking"
+  } else {
+    paste0("blocking by ", block.field, " with duplicateCorrelation")
+  }
+
+  paste0(
+    "limma-voom linear model; design matrix columns: ",
+    paste(colnames(design), collapse = ", "),
+    "; contrast: ",
+    paste(contrast.descriptions, collapse = "; "),
+    "; ",
+    block.description
+  )
+}
+
+print_de_model <- function(method.output, de.method) {
+  model <- method.output$model
+
+  if (is.character(model) &&
+      length(model) == 1L &&
+      !is.na(model) &&
+      nzchar(trimws(model))) {
+    cat(
+      "Model used (",
+      de_method_label(de.method),
+      "): ",
+      model,
+      "\n\n",
+      sep = ""
+    )
+  } else {
+    cat(
+      "Model unavailable (",
+      de_method_label(de.method),
+      "): This cached result predates model metadata. Set ",
+      "overwrite.results = TRUE to rerun this method and record its model.\n\n",
+      sep = ""
+    )
+  }
+}
+
 
 
 # DE result formatting helpers
@@ -1433,6 +1664,19 @@ get_top_gene_labels <- function(results.df,
   ))
 }
 
+select_degs_for_report <- function(results.df,
+                                   fc.limit = 1.5,
+                                   padj.limit = 0.05) {
+  results.df %>%
+    dplyr::filter(
+      !is.na(.data$logfc),
+      !is.na(.data$padj),
+      .data$padj < padj.limit,
+      abs(.data$logfc) > fc.limit
+    ) %>%
+    dplyr::arrange(.data$padj, dplyr::desc(abs(.data$logfc)))
+}
+
 
 # Wrapper around improved_make_volcano() function.
 # This keeps volcano parameter handling in one place.
@@ -1450,6 +1694,7 @@ make_de_volcano <- function(results.df,
     title.size = default_if_null(comp.parameters$title.size, 22),
     legend.title = default_if_null(comp.parameters$legend.title, "Expression"),
     fc.limit = default_if_null(comp.parameters$fc.limit, 1.5),
+    padj.limit = default_if_null(comp.parameters$padj.limit, 0.05),
     custom.gene.labels = custom.labels,
     remove.controls = default_if_null(comp.parameters$remove.controls, FALSE),
     remove.genes = default_if_null(comp.parameters$remove.genes, NULL),
@@ -1473,6 +1718,33 @@ make_de_volcano <- function(results.df,
   )
 }
 
+make_de_volcano_interactive <- function(results.df, comp.parameters) {
+  improved_make_volcano_interactive(
+    lmm.results = results.df,
+    title = default_if_null(
+      comp.parameters$volcano.title,
+      default_if_null(comp.parameters$heading, comp.parameters$contrast.name)
+    ),
+    title.size = default_if_null(comp.parameters$title.size, 22),
+    legend.title = default_if_null(comp.parameters$legend.title, "Expression"),
+    fc.limit = default_if_null(comp.parameters$fc.limit, 1.5),
+    padj.limit = default_if_null(comp.parameters$padj.limit, 0.05),
+    remove.genes = default_if_null(comp.parameters$remove.genes, NULL),
+    x.lab = default_if_null(comp.parameters$x.lab, "Log2 Fold Change"),
+    y.lab = default_if_null(comp.parameters$y.lab, "-Log10 adjusted p-value"),
+    dotted.line.color = default_if_null(comp.parameters$dotted.line.color, "black"),
+    alpha = default_if_null(comp.parameters$alpha, 1),
+    nonDE.color = default_if_null(comp.parameters$nonDE.color, "gray60"),
+    upDE.color = default_if_null(comp.parameters$upDE.color, "red"),
+    downDE.color = default_if_null(comp.parameters$downDE.color, "blue"),
+    axis.tick.label.size = default_if_null(
+      comp.parameters$axis.tick.label.size,
+      20
+    ),
+    legend.text.size = default_if_null(comp.parameters$legend.text.size, 20),
+    axis.title.size = default_if_null(comp.parameters$axis.title.size, 20)
+  )
+}
 
 
 # StandR subsetting, design, and contrast helpers
@@ -1843,24 +2115,116 @@ make_standr_gsea_log_counts <- function(v,
 # DE method runners
 
 
-# Run your original DSPWorkflow::diffExpr() method.
+# Run the default DSPWorkflow method, optionally using a custom model formula.
 run_default_de <- function(lmm.input, comp.parameters) {
-  results.list <- diffExpr(
-    object = lmm.input$subset.object,
-    analysis.type = default_if_null(comp.parameters$analysis.type, "Within Groups"),
-    region.col = comp.parameters$region.col,
-    regions = comp.parameters$regions,
-    group.col = comp.parameters$group.col,
-    groups = comp.parameters$groups,
-    n.cores = parallel::detectCores(), 
-    slide.col = parameters$de$common$batch.col
+  analysis.type <- default_if_null(
+    comp.parameters$analysis.type,
+    "Within Groups"
   )
-  
-  results.df <- standardize_default_results(results.list$results)
-  
+
+  if (is.null(comp.parameters$model.formula)) {
+    execution.output <- capture.output(
+      results.list <- diffExpr(
+        object = lmm.input$subset.object,
+        analysis.type = analysis.type,
+        region.col = comp.parameters$region.col,
+        regions = comp.parameters$regions,
+        group.col = comp.parameters$group.col,
+        groups = comp.parameters$groups,
+        n.cores = parallel::detectCores()
+      )
+    )
+
+    if (length(execution.output) > 0) {
+      cat(execution.output, sep = "\n")
+      cat("\n")
+    }
+
+    results.df <- standardize_default_results(results.list$results)
+    model <- describe_default_de_model(
+      analysis.type = analysis.type,
+      execution.output = execution.output
+    )
+  } else {
+    if (is.null(comp.parameters$group.var) ||
+        length(comp.parameters$group.var) != 1L ||
+        !is.character(comp.parameters$group.var) ||
+        is.na(comp.parameters$group.var) ||
+        !nzchar(trimws(comp.parameters$group.var))) {
+      stop(
+        "A single non-empty group.var is required when model.formula is set."
+      )
+    }
+
+    if (!is.character(comp.parameters$model.formula) ||
+        length(comp.parameters$model.formula) != 1L ||
+        is.na(comp.parameters$model.formula) ||
+        !nzchar(trimws(comp.parameters$model.formula))) {
+      stop("model.formula must be a single non-empty formula string.")
+    }
+
+    model.formula <- trimws(comp.parameters$model.formula)
+    if (!startsWith(model.formula, "~")) {
+      model.formula <- paste("~", model.formula)
+    }
+    model.formula <- stats::as.formula(model.formula)
+    if (length(model.formula) != 2L) {
+      stop("model.formula must be a one-sided formula.")
+    }
+
+    execution.output <- capture.output(
+      results.list <- mixedModelDE(
+        object = lmm.input$subset.object,
+        elt = "log_q",
+        modelFormula = model.formula,
+        groupVar = comp.parameters$group.var,
+        nCores = parallel::detectCores(),
+        multiCore = TRUE,
+        pAdjust = "fdr",
+        pairwise = TRUE
+      )
+    )
+
+    if (length(execution.output) > 0) {
+      cat(execution.output, sep = "\n")
+      cat("\n")
+    }
+
+    lmm.results.summary <- do.call(rbind, results.list["lsmeans", ])
+    lmm.results.summary <- as.data.frame(lmm.results.summary)
+    lmm.results.summary$gene <- unlist(lapply(
+      colnames(results.list),
+      rep,
+      nrow(results.list["lsmeans", ][[1]])
+    ))
+    lmm.results.summary$adj_pval <- p.adjust(
+      lmm.results.summary[["Pr(>|t|)"]],
+      method = "fdr"
+    )
+    lmm.results.summary$logfc <- lmm.results.summary$Estimate
+
+    results.df <- data.frame(
+      gene = lmm.results.summary$gene,
+      logfc = as.numeric(format(lmm.results.summary$logfc, digits = 3)),
+      pval = as.numeric(format(
+        lmm.results.summary[["Pr(>|t|)"]],
+        digits = 3
+      )),
+      padj = as.numeric(format(lmm.results.summary$adj_pval, digits = 3)),
+      stringsAsFactors = FALSE
+    )
+    model <- paste0(
+      "Custom linear mixed-effects model: ",
+      paste(deparse(model.formula), collapse = ""),
+      "; pairwise contrasts by ",
+      comp.parameters$group.var
+    )
+  }
+
   list(
     results = results.df,
-    results.raw = results.list
+    results.raw = results.list,
+    model = model
   )
 }
 
@@ -1985,7 +2349,13 @@ run_standr_de <- function(standr.object, comp.parameters) {
       block <- NULL
     }
   }
-  
+
+  model <- describe_standr_model(
+    design = design,
+    contrast = contr.matrix,
+    block.field = if (is.null(block)) NULL else standr.parameters$block.field
+  )
+
   plot.voom <- default_if_null(standr.parameters$plot.voom, FALSE)
   
   if (!is.null(block)) {
@@ -2105,6 +2475,7 @@ run_standr_de <- function(standr.object, comp.parameters) {
     results.full = results.full,
     design = design,
     contrast.matrix = contr.matrix,
+    model = model,
     keep = keep,
     removed.genes = removed.genes,
     corfit1 = corfit1,
@@ -2297,6 +2668,8 @@ run_de_comparison <- function(comp.parameters,
       }
     }
     
+    print_de_model(method.output, de.method)
+
 
     # DEG summary
 
