@@ -710,3 +710,76 @@ test_that("static and interactive volcano builders preserve their intended layer
     c("red", "blue", "gray60")
   )
 })
+
+test_that("Venn reporting handles empty DEG lists and missing methods", {
+  skip_if_not_installed("ggVennDiagram")
+  skip_if_not_installed("patchwork")
+  skip_if_not_installed("openxlsx")
+
+  report <- readLines(file.path(project.root, "DSP_DE_Analysis_Report.qmd"))
+  report.chunk <- function(label) {
+    start <- match(paste0("```{r ", label, "}"), report)
+    stopifnot(!is.na(start))
+    end <- start + match("```", report[(start + 1L):length(report)])
+    parse(text = report[(start + 1L):(end - 1L)])
+  }
+  env <- new.env(parent = globalenv())
+  env$ggVennDiagram <- ggVennDiagram::ggVennDiagram
+  env$plot_layout <- patchwork::plot_layout
+  env$plot_annotation <- patchwork::plot_annotation
+  env$str_to_title <- stringr::str_to_title
+  env$createWorkbook <- openxlsx::createWorkbook
+  env$addWorksheet <- openxlsx::addWorksheet
+  env$writeData <- openxlsx::writeData
+  env$saveWorkbook <- openxlsx::saveWorkbook
+  eval(report.chunk("Venn Diagram Function"), envir = env)
+
+  empty <- data.frame(gene = "a", logfc = 0, padj = 0.9)
+  up <- data.frame(gene = "b", logfc = 1, padj = 0.01)
+  both <- data.frame(gene = c("b", "c"), logfc = c(1, -1),
+                     padj = c(0.01, 0.01))
+  env$de.outputs <- list(
+    no_degs = list(standr = list(results = empty), default = list(results = empty)),
+    missing_method = list(default = list(results = empty)),
+    one_sided = list(standr = list(results = empty), default = list(results = up)),
+    populated = list(standr = list(results = up), default = list(results = both))
+  )
+
+  output.dir <- tempfile("venn-report-")
+  dir.create(output.dir)
+  dir.create(file.path(output.dir, "method_comparison"))
+  on.exit(unlink(output.dir, recursive = TRUE), add = TRUE)
+  env$parameters <- list(
+    de = list(common = list(export.venn = TRUE, write.deg.lists = TRUE)),
+    paths = list(de.folder = paste0(output.dir, "/"))
+  )
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  invisible(capture.output(eval(report.chunk("Create Venn Diagrams"), envir = env)))
+
+  expect_null(env$comparison.venn.list$no_degs$up.venn)
+  expect_null(env$comparison.venn.list$no_degs$down.venn)
+  expect_equal(nrow(env$comparison.venn.list$no_degs$venn.degs.df), 0)
+  expect_null(env$comparison.venn.list$missing_method$venn.degs.df)
+  expect_identical(env$comparison.venn.list$missing_method$missing.methods, "StandR")
+  expect_false(is.null(env$comparison.venn.list$one_sided$up.venn))
+  expect_null(env$comparison.venn.list$one_sided$down.venn)
+  expect_equal(
+    env$comparison.venn.list$populated$venn.degs.df,
+    data.frame(group = c("up_shared", "down_default"), gene = c("b", "c"))
+  )
+
+  workbook <- file.path(output.dir, "method_comparison", "deg_list_method_comparison.xlsx")
+  expect_setequal(openxlsx::getSheetNames(workbook), c("no_degs", "one_sided", "populated"))
+  expect_true(file.exists(file.path(output.dir, "method_comparison", "no_degs_de_venn.png")))
+  expect_false(file.exists(file.path(output.dir, "method_comparison", "missing_method_de_venn.png")))
+
+  rendered <- paste(capture.output(
+    eval(report.chunk("Display Venn Diagrams"), envir = env)
+  ), collapse = "\n")
+  expect_match(rendered, "No upregulated DEGs for StandR or Default", fixed = TRUE)
+  expect_match(rendered, "No downregulated DEGs for StandR or Default", fixed = TRUE)
+  expect_match(rendered, "Missing: StandR", fixed = TRUE)
+  expect_match(rendered, "No upregulated DEGs for Default", fixed = TRUE)
+  expect_match(rendered, "### Populated", fixed = TRUE)
+})

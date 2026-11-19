@@ -228,68 +228,72 @@ for (comparison in names(de.outputs)) {
 method_degs_venn <- function(de.results, 
                              title, 
                              logfc.cutoff){ 
-  
-  # Gather the up and down degs for each result
-  up.standr <- de.results$standr$results %>% 
-    filter(padj < 0.05, logfc >= logfc.cutoff)
-  up.standr.degs <- up.standr$gene
-  
-  down.standr <- de.results$standr$results %>% 
-    filter(padj < 0.05, logfc <= -logfc.cutoff)
-  down.standr.degs <- down.standr$gene
-  
-  up.default <- de.results$default$results %>% 
-    filter(padj < 0.05, logfc >= logfc.cutoff)
-  up.default.degs <- up.default$gene
-  
-  down.default <- de.results$default$results %>% 
-    filter(padj < 0.05, logfc <= -logfc.cutoff)
-  down.default.degs <- down.default$gene
-  
-  
-  up.venn <- ggVennDiagram(list("StandR" = up.standr.degs, 
-                                "Default" = up.default.degs), 
-                           label = "count", 
-                           set_size = 0) + 
-    scale_fill_gradient(low="grey90",high = "red") + 
-    ggtitle(paste0("Upregulated DEGs, logFC > ", logfc.cutoff)) + 
-    annotate(
-      "text",
-      x = 0,
-      y = 7.0,
-      label = "Default",
-      size = 5,
-      fontface = "bold") +
-    annotate(
-      "text",
-      x = 0,
-      y = -3.0,
-      label = "StandR",
-      size = 5,
-      fontface = "bold")
-  
-  down.venn <- ggVennDiagram(list("StandR" = down.standr.degs, 
-                                "Default" = down.default.degs), 
-                             label = "count", 
-                             set_size = 0) + 
-    scale_fill_gradient(low="grey90",high = "blue") + 
-    ggtitle(paste0("Downregulated DEGs, logFC < -", logfc.cutoff)) + 
-    annotate(
-      "text",
-      x = 0,
-      y = 7.0,
-      label = "Default",
-      size = 5,
-      fontface = "bold") +
-    annotate(
-      "text",
-      x = 0,
-      y = -3.0,
-      label = "StandR",
-      size = 5,
-      fontface = "bold")
-  
-  all.venn <- up.venn + down.venn + 
+
+  methods <- c(StandR = "standr", Default = "default")
+  degs <- lapply(methods, function(method) {
+    results <- de.results[[method]]$results
+    if (is.null(results)) {
+      return(NULL)
+    }
+    list(
+      up = results %>% filter(padj < 0.05, logfc >= logfc.cutoff) %>% pull(gene),
+      down = results %>% filter(padj < 0.05, logfc <= -logfc.cutoff) %>% pull(gene)
+    )
+  })
+  missing.methods <- names(degs)[vapply(degs, is.null, logical(1))]
+  empty.methods <- function(direction) {
+    names(degs)[vapply(degs, function(x) {
+      !is.null(x) && length(x[[direction]]) == 0L
+    }, logical(1))]
+  }
+  empty.up <- empty.methods("up")
+  empty.down <- empty.methods("down")
+
+  if (length(missing.methods) > 0L) {
+    return(list(
+      missing.methods = missing.methods, empty.up = empty.up,
+      empty.down = empty.down, logfc.cutoff = logfc.cutoff,
+      up.venn = NULL, down.venn = NULL, all.venn = NULL,
+      venn.degs.df = NULL
+    ))
+  }
+
+  up.standr.degs <- degs$StandR$up
+  down.standr.degs <- degs$StandR$down
+  up.default.degs <- degs$Default$up
+  down.default.degs <- degs$Default$down
+
+  make_venn <- function(standr.genes, default.genes, color, plot.title) {
+    if (length(standr.genes) == 0L && length(default.genes) == 0L) {
+      return(NULL)
+    }
+    ggVennDiagram(
+      list("StandR" = standr.genes, "Default" = default.genes),
+      label = "count", set_size = 0
+    ) +
+      scale_fill_gradient(low = "grey90", high = color) +
+      ggtitle(plot.title) +
+      annotate("text", x = 0, y = 7.0, label = "Default",
+               size = 5, fontface = "bold") +
+      annotate("text", x = 0, y = -3.0, label = "StandR",
+               size = 5, fontface = "bold")
+  }
+
+  up.venn <- make_venn(
+    up.standr.degs, up.default.degs, "red",
+    paste0("Upregulated DEGs, logFC >= ", logfc.cutoff)
+  )
+  down.venn <- make_venn(
+    down.standr.degs, down.default.degs, "blue",
+    paste0("Downregulated DEGs, logFC <= -", logfc.cutoff)
+  )
+  empty_plot <- function(direction) {
+    ggplot() +
+      annotate("text", x = 0, y = 0, label = paste("No", direction, "DEGs")) +
+      theme_void()
+  }
+  all.venn <- (if (is.null(up.venn)) empty_plot("upregulated") else up.venn) +
+    (if (is.null(down.venn)) empty_plot("downregulated") else down.venn) +
     plot_layout(ncol = 2) + 
     plot_annotation(title = title, 
                     theme = theme(
@@ -332,7 +336,11 @@ method_degs_venn <- function(de.results,
   return(list("up.venn" = up.venn, 
               "down.venn" = down.venn, 
               "all.venn" = all.venn, 
-              "venn.degs.df" = venn.degs.df))
+              "venn.degs.df" = venn.degs.df,
+              "missing.methods" = missing.methods,
+              "empty.up" = empty.up,
+              "empty.down" = empty.down,
+              "logfc.cutoff" = logfc.cutoff))
   
 }
 
@@ -356,7 +364,7 @@ for(comparison in names(de.outputs)){
   
   comparison.venn.list[[comparison]] <- comparison.venn.diagrams
   
-  if(parameters$de$common$export.venn){
+  if(parameters$de$common$export.venn && !is.null(comparison.venn.diagrams$all.venn)){
     
     ggsave(comparison.venn.diagrams$all.venn, 
            file = paste0(parameters$paths$de.folder, 
@@ -378,6 +386,9 @@ if(parameters$de$common$write.deg.lists){
   for(comparison in names(comparison.venn.list)){
     
     deg.list <- comparison.venn.list[[comparison]]$venn.degs.df
+    if (is.null(deg.list)) {
+      next
+    }
     
     addWorksheet(deg.list.output, comparison)
     writeData(deg.list.output, 
@@ -406,15 +417,34 @@ for (comparison in names(comparison.venn.list)) {
   comparison.title <- str_to_title(gsub("_", " ", comparison))
   diagrams <- comparison.venn.list[[comparison]]
 
+  cat("\n### ", comparison.title, "\n\n", sep = "")
+  if (length(diagrams$missing.methods) > 0L) {
+    cat(
+      "Venn diagrams require both Default and StandR results. Missing: ",
+      paste(diagrams$missing.methods, collapse = ", "), ".\n\n",
+      sep = ""
+    )
+  }
   cat(
-    "\n### ",
-    comparison.title,
-    "\n\n::: {.panel-tabset}\n\n#### Upregulated\n\n",
+    "DEGs are selected using adjusted p-value < 0.05 and ",
+    "|log2FC| >= ", diagrams$logfc.cutoff, ".\n\n",
     sep = ""
   )
-  print(diagrams$up.venn)
-  cat("\n\n#### Downregulated\n\n")
-  print(diagrams$down.venn)
+  cat("::: {.panel-tabset}\n\n")
+  for (direction in c("up", "down")) {
+    label <- if (direction == "up") "Upregulated" else "Downregulated"
+    empty <- if (direction == "up") diagrams$empty.up else diagrams$empty.down
+    plot <- if (direction == "up") diagrams$up.venn else diagrams$down.venn
+    cat("#### ", label, "\n\n", sep = "")
+    if (length(empty) > 0L) {
+      cat("No ", tolower(label), " DEGs for ",
+          paste(empty, collapse = " or "), ".\n\n", sep = "")
+    }
+    if (!is.null(plot)) {
+      print(plot)
+      cat("\n\n")
+    }
+  }
   cat("\n:::\n\n")
 }
 
