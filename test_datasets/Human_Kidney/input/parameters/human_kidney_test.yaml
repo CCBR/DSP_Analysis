@@ -114,7 +114,7 @@ MA:
     contrast.levels: ["glomerulus", "tubule"]
 
 PCA: 
-    PCA.Eval,Fields:
+    PCA.Eval.Fields:
         bio.field: combined_column
         batch.field: slide_name
 
