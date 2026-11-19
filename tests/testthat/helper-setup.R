@@ -21,10 +21,10 @@ project.root <- rprojroot::find_root(rprojroot::has_file("run_test.sh"))
 
 # Current pipeline output files
 current.files <- list(
-  q3.normalized.counts = file.path(project.root, "test_datasets/Human_Kidney/qc/human_kidney_test_q3normalized_counts.csv"),
-  standr.logcounts      = file.path(project.root, "test_datasets/Human_Kidney/qc/StandR/standr_logcounts.csv"),
-  de.glom_v_tubule.default = file.path(project.root, "test_datasets/Human_Kidney/de/DKD_Glomerulus_vs_Tubule_default_de.results.csv"),
-  de.glom_v_tubule.standr  = file.path(project.root, "test_datasets/Human_Kidney/de/DKD_Glomerulus_vs_Tubule_standr_de.results.csv")
+  q3.normalized.counts = file.path(project.root, "test_datasets/Human_Kidney/output/qc/human_kidney_test_q3normalized_counts.csv"),
+  standr.logcounts      = file.path(project.root, "test_datasets/Human_Kidney/output/qc/StandR/standr_logcounts.csv"),
+  de.glom_v_tubule.default = file.path(project.root, "test_datasets/Human_Kidney/output/de/DKD_Glomerulus_vs_Tubule_default_de.results.csv"),
+  de.glom_v_tubule.standr  = file.path(project.root, "test_datasets/Human_Kidney/output/de/DKD_Glomerulus_vs_Tubule_standr_de.results.csv")
 )
 
 # Matching reference files (gzip-compressed)

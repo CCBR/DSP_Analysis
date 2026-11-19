@@ -1,5 +1,5 @@
 ---
-title: "DSP DE Analysis - Kidney Test Dataset"
+title: "DSP Quality Control - `r yaml::read_yaml(params$config.path)$paths$dataset.name`"
 format:
   html:
     code-fold: true
@@ -267,9 +267,14 @@ standr.input.list$annotation$SegmentDisplayName <- standr.input.list$annotation$
 
 
 # Add required columns for StandR if missing
-if(!("ROICoordinateX" %in% colnames(standr.input.list$annotation))){
+if(!("ROI Coordinate X" %in% colnames(standr.input.list$annotation))){
   
   standr.input.list$annotation$ROICoordinateX <- 1
+  
+}
+
+if(!("ROI Coordinate Y" %in% colnames(standr.input.list$annotation))){
+  
   standr.input.list$annotation$ROICoordinateY <- 1
   
 }
@@ -735,11 +740,11 @@ loq.detection.output <- loq_detection(object = qc.output$object,
 
 #### Overall Gene Detection per AOI
 
-@fig-GeneDetectionbByAOI shows detection rate per AOI, colored by region.
+@fig-AOIDetection shows detection rate per AOI, colored by region.
 
 ```{r Overall AOI Detection}
 #| label: fig-AOIDetection
-#| tbl-cap: "AOI Detection"
+#| fig-cap: "AOI Detection"
 #| warning: false
 
 aoi.detection <- aoi_detection(object = loq.detection.output$object)
@@ -1348,8 +1353,8 @@ default.spe <- make_spe_for_standr(
 spe.list <- list(spatial.object.standr.aoi.QC, spatial.object.standr.final, default.spe)
 
 PCA.eval.plots <- plotClusterEvalStats(spe_list = spe.list,
-                                       bio_feature_name = "region",
-                                       batch_feature_name = "slide_name",
+                                       bio_feature_name = parameters$PCA$PCA.Eval.Fields$bio.field,
+                                       batch_feature_name = parameters$PCA$PCA.Eval.Fields$batch.field,
                                        data_names = c("Raw","RUV","Default"))
 
 print(PCA.eval.plots)

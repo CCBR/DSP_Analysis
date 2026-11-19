@@ -26,9 +26,7 @@ paths:
 
 initialization:
   pkc.file.name: "TAP_H_WTA_v1.0.pkc"
-  pkc.file.path: "test_datasets/Human_Kidney/input/data/TAP_H_WTA_v1.0.pkc"
   annotation.file.name: "test_annotation_kidney.xlsx"
-  annotation.file.path: "test_datasets/Human_Kidney/input/test_annotation_kidney.xlsx"
   dcc.folder: "dccs/"
   annotation.sheet.name: "Template"
   sample.id.field.name: "Sample_ID"
@@ -116,6 +114,10 @@ MA:
     contrast.levels: ["glomerulus", "tubule"]
 
 PCA: 
+    PCA.Eval.Fields:
+        bio.field: combined_column
+        batch.field: slide_name
+
     plots:
         dataset.field: "pathology"
     subset:
