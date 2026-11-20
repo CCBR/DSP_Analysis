@@ -35,6 +35,7 @@ library(patchwork)
 library(openxlsx)
 
 # Source the helper functions
+source("DSP_QC_functions.R")
 source("DSP_functions.R")
 
 parameters <- yaml::read_yaml(params$config.path)
@@ -210,6 +211,36 @@ for (comparison in names(de.outputs)) {
         )
 
       emit_knitr_output(deg.table)
+    }
+  }
+
+  genes <- comparison.parameters$boxplot.genes
+  if (length(genes) > 0L) {
+    if (!is.character(genes) || anyNA(genes) || any(!nzchar(trimws(genes)))) {
+      stop("boxplot.genes must be a list of non-empty gene names for comparison '",
+           comparison, "'.", call. = FALSE)
+    }
+    gene.plot.data <- prepare_de_gene_plot_data(
+      normalized.object, comparison.parameters
+    )
+    for (gene in genes) {
+      cat("\n#### ", htmltools::htmlEscape(gene), "\n\n", sep = "")
+      if (!gene %in% rownames(gene.plot.data$counts)) {
+        cat("Gene not found in the Q3-normalized counts.\n\n")
+        next
+      }
+      cat(
+        "Q3-normalized counts for comparison samples, displayed as ",
+        "log2(counts + 1); these are not model-adjusted values. ",
+        "The Q3-QC samples may differ from the StandR input samples.\n\n"
+      )
+      print(gene_counts_violin_boxplot(
+        counts = gene.plot.data$counts,
+        annotation.df = gene.plot.data$annotation,
+        gene.list = gene,
+        annotation.field = gene.plot.data$annotation.field
+      ))
+      cat("\n\n")
     }
   }
   cat("\n:::\n\n")

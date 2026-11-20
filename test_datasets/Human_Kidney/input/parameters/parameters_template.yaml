@@ -195,6 +195,13 @@ de:
     export.volcano.nolabel: false
     export.gsea.input: true
 
+    # One DE report tab per gene, using log2(Q3-normalized counts + 1).
+    # Q3-QC samples may differ from StandR input samples. Plots use the
+    # default model's comparison field, or StandR's design.annotation if
+    # only StandR is run.
+    # Override per comparison; use [] to disable the common gene list.
+    boxplot.genes: []
+
     # Venn Diagrams and method comparison
     write.deg.lists: true # write out as an excel file
     export.venn: true

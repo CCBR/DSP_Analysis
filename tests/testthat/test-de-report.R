@@ -46,6 +46,134 @@ test_that("DE backup failures identify missing source files", {
   )
 })
 
+test_that("DE gene plots preserve Q3 counts and comparison sample annotations", {
+  skip_if_not_installed("GeomxTools")
+  suppressPackageStartupMessages(library(GeomxTools))
+  example <- system.file(
+    "extdata/DSP_NGS_Example_Data/demoData.rds", package = "GeomxTools"
+  )
+  skip_if_not(nzchar(example), "GeomxTools example data not installed")
+  object <- readRDS(example)[1:3, 1:10]
+  annotation <- Biobase::pData(object)
+  annotation$class <- rep(c("A", "B"), 5)
+  annotation$region <- c("x", "x", "x", "x", "y", "y", "x", "x", "x", "x")
+  annotation$cohort <- c(rep("yes", 6), "no", "no", "yes", "yes")
+  Biobase::pData(object) <- annotation
+  counts <- matrix(
+    seq_len(30) - 1, nrow = 3,
+    dimnames = list(rownames(object), colnames(object))
+  )
+  Biobase::assayDataElement(object, "q_norm") <- counts
+  params <- list(
+    contrast.name = "test", de.method = "default",
+    subset.group.1 = list(class = "A", cohort = "yes"),
+    subset.group.2 = list(class = "B", cohort = "yes"),
+    model.formula = "~ class", group.var = "class"
+  )
+  plot.data <- de.model.test.env$prepare_de_gene_plot_data(object, params)
+  selected <- which(annotation$cohort == "yes")
+  expect_setequal(colnames(plot.data$counts), colnames(object)[selected])
+  expect_identical(colnames(plot.data$counts), rownames(plot.data$annotation))
+  expect_identical(plot.data$annotation.field, "class")
+  expect_equal(plot.data$counts, counts[, colnames(plot.data$counts)])
+
+  plot.env <- new.env(parent = de.model.test.env)
+  suppressWarnings(sys.source(file.path(project.root, "DSP_QC_functions.R"),
+                              envir = plot.env))
+  for (gene in rownames(counts)[1:2]) {
+    plot <- plot.env$gene_counts_violin_boxplot(
+      counts = plot.data$counts, annotation.df = plot.data$annotation,
+      gene.list = gene, annotation.field = plot.data$annotation.field
+    )
+    samples <- plot$data$SampleID
+    expect_equal(
+      plot$data$log_counts,
+      as.numeric(log2(counts[gene, samples] + 1))
+    )
+    expect_identical(plot$data$class, annotation[samples, "class"])
+    expect_true(all(plot$data$gene == gene))
+  }
+
+  params$model.formula <- NULL
+  params$analysis.type <- "Within Groups"
+  params$group.col <- "region"
+  params$groups <- "x"
+  params$region.col <- "class"
+  params$regions <- c("A", "B")
+  within <- de.model.test.env$prepare_de_gene_plot_data(object, params)
+  expect_identical(within$annotation.field, "class")
+  expect_setequal(
+    colnames(within$counts),
+    rownames(annotation)[annotation$cohort == "yes" & annotation$region == "x"]
+  )
+
+  params$de.method <- "standr"
+  params$standr <- list(design.annotation = "region")
+  params$subset.group.1 <- list(cohort = "no")
+  params$subset.group.2 <- list(class = c("A", "B"), region = "y")
+  standr <- de.model.test.env$prepare_de_gene_plot_data(object, params)
+  expect_identical(standr$annotation.field, "region")
+  expect_setequal(
+    colnames(standr$counts),
+    rownames(annotation)[annotation$cohort == "no" | annotation$region == "y"]
+  )
+})
+
+test_that("DE gene tabs respect overrides and continue after missing genes", {
+  report <- readLines(file.path(project.root, "DSP_DE_Analysis_Report.qmd"))
+  start <- match("```{r Display DE Results}", report)
+  end <- start + match("```", report[(start + 1L):length(report)])
+  chunk <- parse(text = report[(start + 1L):(end - 1L)])
+  env <- new.env(parent = de.model.test.env)
+  env$str_to_title <- stringr::str_to_title
+  env$normalized.object <- NULL
+  env$prepare_de_gene_plot_data <- function(...) {
+    list(counts = matrix(1, nrow = 1, dimnames = list("present", "sample")),
+         annotation = data.frame(class = "A", row.names = "sample"),
+         annotation.field = "class")
+  }
+  env$gene_counts_violin_boxplot <- function(counts, annotation.df, gene.list,
+                                             annotation.field) {
+    cat("Plot for ", gene.list, "\n", sep = "")
+    invisible(NULL)
+  }
+  common <- list(de.method = "default", boxplot.genes = c("present", "missing"))
+  env$de.comparisons <- list(
+    first = modifyList(common, list()),
+    second = modifyList(common, list(boxplot.genes = "present")),
+    empty = modifyList(common, list(boxplot.genes = list()))
+  )
+  env$de.outputs <- lapply(env$de.comparisons, function(x) list(default = list()))
+  output <- paste(capture.output(eval(chunk, envir = env)), collapse = "\n")
+  expect_equal(length(gregexpr("#### missing", output, fixed = TRUE)[[1]]), 1)
+  expect_equal(length(gregexpr("#### present", output, fixed = TRUE)[[1]]), 2)
+  expect_match(output, "Gene not found in the Q3-normalized counts.", fixed = TRUE)
+  expect_match(output, "Plot for present", fixed = TRUE)
+  empty.output <- strsplit(output, "### Empty", fixed = TRUE)[[1]][2]
+  expect_false(grepl("#### present|#### missing", empty.output))
+
+  figure.dir <- tempfile("de-gene-tab-")
+  dir.create(figure.dir)
+  on.exit(unlink(figure.dir, recursive = TRUE), add = TRUE)
+  env$fig.path <- paste0(figure.dir, "/plot-")
+  env$chunk <- chunk
+  env$gene_counts_violin_boxplot <- function(...) {
+    ggplot2::ggplot(data.frame(x = 1, y = 1), ggplot2::aes(x, y)) +
+      ggplot2::geom_point()
+  }
+  knitted <- knitr::knit(
+    text = c(
+      "```{r, echo=FALSE, results='asis', fig.path=fig.path}",
+      "eval(chunk)",
+      "```"
+    ),
+    envir = env, quiet = TRUE
+  )
+  expect_true(grepl(
+    "\\]\\([^\\n]+\\)\\n\\s*\\n#### missing", knitted, perl = TRUE
+  ))
+})
+
 test_that("DKD Glomerulus vs Tubule (default method) DE results match reference", {
   
   skip_if_not(file.exists(reference.files$de.glom_v_tubule.default),

@@ -1162,9 +1162,9 @@ gene_counts_violin_boxplot <- function(counts,
   
   # Set up the annotation/counts df for ggplot2
   counts.anno.df.melt <- counts.anno.df %>% 
-    pivot_longer(cols = all_of(gene.list), 
-                 names_to = "gene", 
-                 values_to = "log_counts")
+    tidyr::pivot_longer(cols = all_of(gene.list),
+                        names_to = "gene",
+                        values_to = "log_counts")
   
   counts.anno.df.melt$log_counts <- as.numeric(counts.anno.df.melt$log_counts)
   

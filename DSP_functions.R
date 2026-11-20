@@ -1824,6 +1824,56 @@ subset_standr_object_for_comparison <- function(standr.object, comp.parameters) 
   standr.subset.object
 }
 
+prepare_de_gene_plot_data <- function(normalized.object, comp.parameters) {
+  if ("default" %in% comp.parameters$de.method) {
+    comparison.object <- subset_object_for_lmm(
+      object = normalized.object,
+      subset.group.1 = comp.parameters$subset.group.1,
+      subset.group.2 = comp.parameters$subset.group.2
+    )$subset.object
+    annotation <- Biobase::pData(comparison.object)
+
+    if (is.null(comp.parameters$model.formula)) {
+      keep <- annotation[[comp.parameters$group.col]] %in% comp.parameters$groups &
+        annotation[[comp.parameters$region.col]] %in% comp.parameters$regions
+      comparison.object <- comparison.object[, keep]
+      annotation <- Biobase::pData(comparison.object)
+      annotation.field <- if (identical(
+        default_if_null(comp.parameters$analysis.type, "Within Groups"),
+        "Within Groups"
+      )) comp.parameters$region.col else comp.parameters$group.col
+    } else {
+      annotation.field <- comp.parameters$group.var
+    }
+  } else {
+    annotation <- Biobase::pData(normalized.object)
+    keep <- annotation_matches_group(annotation, comp.parameters$subset.group.1) |
+      annotation_matches_group(annotation, comp.parameters$subset.group.2)
+    comparison.object <- normalized.object[, keep]
+    annotation <- Biobase::pData(comparison.object)
+    annotation.field <- comp.parameters$standr$design.annotation
+  }
+
+  if (length(annotation.field) != 1L || is.na(annotation.field) ||
+      !nzchar(annotation.field) || !annotation.field %in% names(annotation)) {
+    stop(
+      "Cannot determine the gene plot grouping field for comparison '",
+      comp.parameters$contrast.name, "'. Check the DE model parameters.",
+      call. = FALSE
+    )
+  }
+  if (nrow(annotation) == 0L) {
+    stop("No samples available for gene plots in comparison '",
+         comp.parameters$contrast.name, "'.", call. = FALSE)
+  }
+
+  list(
+    counts = Biobase::assayDataElement(comparison.object, "q_norm"),
+    annotation = annotation,
+    annotation.field = annotation.field
+  )
+}
+
 
 # Build the StandR/limma model matrix.
 #
