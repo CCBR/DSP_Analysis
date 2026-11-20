@@ -362,7 +362,7 @@ aoi_flag_table <- function(aoi.flags){
   }
   
   # Create the table using the flag coloring function
-  aoi.flag.table <- qc.output$segment.flags %>% 
+  aoi.flag.table <- aoi.flags %>%
     gt() %>% 
     data_color(columns = flag.column.names, 
                fn = red.flag, 
@@ -376,7 +376,8 @@ probe_flag_table <- function(probe.flags,
                              object){
   
   # Create the table for probe flags
-  probe.flags.df <- probe.flags %>% separate_rows(LocalFlag, sep = ",")
+  probe.flags.df <- probe.flags %>%
+    tidyr::separate_rows(LocalFlag, sep = ",")
   
   # Rename the dcc file name column
   probe.flags.df$Sample_ID <- probe.flags.df$LocalFlag
@@ -389,19 +390,19 @@ probe_flag_table <- function(probe.flags,
     select(Sample_ID, segmentID)
   
   # Map the AOI names in the flags to the segmentID
-  probe.flags.df <- merge(probe.flags.df, annotation.subset, by = "Sample_ID")
+  probe.flags.df <- dplyr::left_join(
+    probe.flags.df, annotation.subset, by = "Sample_ID"
+  )
   
   # Remove the dcc file name column 
   probe.flags.table <- probe.flags.df %>% 
-    select(TargetName, RTS_ID, segmentID, FlagType) %>% 
-    gt()
+    select(TargetName, RTS_ID, segmentID, FlagType)
   
   # For a summary of only probe names
-  probe.flag.summary <- qc.output$probe.flags %>% 
-    select(TargetName, RTS_ID, FlagType) %>% 
-    gt()
+  probe.flag.summary <- probe.flags %>%
+    select(TargetName, RTS_ID, FlagType)
   
-  return(list("probe.flag.table" = probe.flags.table, 
+  return(list("probe.flags.table" = probe.flags.table,
               "probe.flag.summary" = probe.flag.summary))
   
 }
